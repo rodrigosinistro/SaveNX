@@ -12,14 +12,18 @@ namespace
     std::string hex64(uint64_t value)
     {
         char buffer[17]{};
-        std::snprintf(buffer, sizeof(buffer), "%016llX", value);
+        std::snprintf(buffer, sizeof(buffer), "%016llX", static_cast<unsigned long long>(value));
         return buffer;
     }
 
     std::string uid_string(AccountUid uid)
     {
         char buffer[33]{};
-        std::snprintf(buffer, sizeof(buffer), "%016llX%016llX", uid.uid[0], uid.uid[1]);
+        std::snprintf(buffer,
+                      sizeof(buffer),
+                      "%016llX%016llX",
+                      static_cast<unsigned long long>(uid.uid[0]),
+                      static_cast<unsigned long long>(uid.uid[1]));
         return buffer;
     }
 

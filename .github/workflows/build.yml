@@ -18,24 +18,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Switch portlibs
-        run: |
-          dkp-pacman -Syu --noconfirm
-          dkp-pacman -S --needed --noconfirm \
-            switch-dev \
-            switch-bzip2 \
-            switch-curl \
-            switch-freetype \
-            switch-harfbuzz \
-            switch-libjpeg-turbo \
-            switch-libjson-c \
-            switch-libpng \
-            switch-libwebp \
-            switch-sdl2 \
-            switch-sdl2_image \
-            switch-tinyxml2 \
-            switch-zlib
-
       - name: Build NRO
         run: make -j2
 

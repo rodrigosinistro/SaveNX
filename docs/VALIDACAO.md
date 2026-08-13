@@ -11,7 +11,7 @@ Verificações executadas neste pacote:
 - ícone NRO: JPEG 256 × 256; ícone de cabeçalho: PNG 48 × 50;
 - `git diff --check` não encontrou erros de whitespace.
 
-Limite deste ambiente: devkitPro/devkitA64 e `libnx` não estão instalados, portanto `SaveNX.nro` não foi produzido localmente. O workflow em `.github/workflows/build.yml` instala os portlibs no container devkitPro e é o caminho preparado para a compilação completa.
+Limite deste ambiente: devkitPro/devkitA64 e `libnx` não estão instalados, portanto `SaveNX.nro` não foi produzido localmente. O workflow em `.github/workflows/build.yml` usa a imagem oficial `devkitpro/devkita64`, que já contém `switch-dev` e `switch-portlibs`, e é o caminho preparado para a compilação completa.
 
 Antes de uma release estável ainda é necessário:
 

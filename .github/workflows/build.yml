@@ -1,0 +1,57 @@
+name: Build SaveNX
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Switch portlibs
+        run: |
+          dkp-pacman -Syu --noconfirm
+          dkp-pacman -S --needed --noconfirm \
+            switch-dev \
+            switch-bzip2 \
+            switch-curl \
+            switch-freetype \
+            switch-harfbuzz \
+            switch-libjpeg-turbo \
+            switch-libjson-c \
+            switch-libpng \
+            switch-libwebp \
+            switch-sdl2 \
+            switch-sdl2_image \
+            switch-tinyxml2 \
+            switch-zlib
+
+      - name: Build NRO
+        run: make -j2
+
+      - name: Create SD-ready artifact
+        run: |
+          mkdir -p dist/switch/SaveNX dist/docs
+          cp SaveNX.nro dist/switch/SaveNX/SaveNX.nro
+          cp README.md dist/README.md
+          cp docs/GOOGLE_DRIVE_SETUP_PT-BR.md dist/docs/
+          cp config/client_secret.example.json dist/
+          cd dist
+          sha256sum switch/SaveNX/SaveNX.nro > SaveNX.nro.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SaveNX-switch
+          path: dist/
+          if-no-files-found: error

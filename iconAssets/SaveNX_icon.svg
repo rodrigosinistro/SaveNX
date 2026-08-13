@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="20" x2="232" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#142640"/>
+      <stop offset="1" stop-color="#07111F"/>
+    </linearGradient>
+    <linearGradient id="cloud" x1="62" y1="72" x2="198" y2="166" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5DE7FF"/>
+      <stop offset="1" stop-color="#36A9FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <path d="M78 166h105c22 0 40-17 40-38 0-20-16-36-36-38-8-25-31-42-58-42-31 0-57 22-62 52-20 5-34 22-34 42 0 23 20 42 45 42Z" fill="#10243B" stroke="url(#cloud)" stroke-width="10" stroke-linejoin="round"/>
+  <rect x="87" y="108" width="82" height="79" rx="12" fill="#F7FBFF"/>
+  <path d="M104 108h49v26h-49z" fill="#273D5D"/>
+  <path d="M128 146v25m0 0-13-13m13 13 13-13" fill="none" stroke="#147BD1" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M83 211h90" stroke="#5DE7FF" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="195" cy="58" r="17" fill="#9B7BFF"/>
+  <path d="m188 58 5 5 10-11" fill="none" stroke="#FFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

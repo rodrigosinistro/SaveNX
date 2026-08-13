@@ -1,0 +1,23 @@
+build/
+.vscode/
+*.cbp
+*.layout
+
+.idea/
+cmake-build-debug/
+
+# build artifacts
+SaveNX.elf
+SaveNX.lst
+SaveNX.map
+SaveNX.nacp
+SaveNX.nro
+SaveNX.nso
+SaveNX.pfs0
+SaveNX*.zip
+dist/
+romfs/Text/
+
+# Never commit real Google OAuth credentials or refresh tokens.
+client_secret.json
+config/client_secret.json

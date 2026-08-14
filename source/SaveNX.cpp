@@ -47,12 +47,18 @@ namespace
                                                      .num_bsd_sessions    = 3,
                                                      .bsd_service_type    = BsdServiceType_User};
 
-    constexpr std::array<std::string_view, 6> REQUIRED_DIRECTORIES = {savenx::paths::APP_ROOT,
-                                                                       savenx::paths::CONFIG_DIR,
-                                                                       savenx::paths::CACHE_DIR,
-                                                                       savenx::paths::LOG_DIR,
-                                                                       savenx::paths::TEMP_DIR,
-                                                                       savenx::paths::BACKUP_DIR};
+    constexpr std::array<std::string_view, 4> REQUIRED_DIRECTORIES_AFTER_LOG = {savenx::paths::CONFIG_DIR,
+                                                                                 savenx::paths::CACHE_DIR,
+                                                                                 savenx::paths::TEMP_DIR,
+                                                                                 savenx::paths::BACKUP_DIR};
+
+    bool ensure_directory(std::string_view directory)
+    {
+        const fslib::Path path{directory};
+        // All startup directories are either /switch/SaveNX or one of its immediate children. Their parent is
+        // prepared first, so avoid the legacy recursive helper during bootstrap.
+        return fslib::directory_exists(path) || fslib::create_directory(path);
+    }
 
 } // namespace
 
@@ -80,15 +86,22 @@ SaveNX::SaveNX()
     // failures be recorded instead of returning silently to the Homebrew Menu.
     ABORT_ON_FAILURE(SaveNX::initialize_filesystem());
 
-    for (const std::string_view directory : REQUIRED_DIRECTORIES)
-    {
-        const fslib::Path path{directory};
-        const bool exists = fslib::directory_exists(path);
-        ABORT_ON_FAILURE(exists || fslib::create_directories_recursively(path));
-    }
+    // Bring the logger online before creating the remaining data directories so any later failure names the
+    // exact path that could not be prepared.
+    ABORT_ON_FAILURE(ensure_directory(savenx::paths::APP_ROOT));
+    ABORT_ON_FAILURE(ensure_directory(savenx::paths::LOG_DIR));
 
     logger::initialize();
     logger::log("Starting SaveNX v%s.", savenx::VERSION.data());
+
+    for (const std::string_view directory : REQUIRED_DIRECTORIES_AFTER_LOG)
+    {
+        if (!ensure_directory(directory))
+        {
+            logger::log("Startup stopped while creating %s.", directory.data());
+            return;
+        }
+    }
 
     if (!initialize_service(romfsInit, "RomFS"))
     {
@@ -208,9 +221,15 @@ void SaveNX::set_boost_mode()
 
 bool SaveNX::initialize_filesystem()
 {
-    const bool fslib    = fslib::is_initialized();
-    const bool fslibDev = fslib && fslib::dev::initialize_sdmc();
-    if (!fslib || !fslibDev) { return false; }
+    if (!fslib::is_initialized()) { return false; }
+
+    // Current libnx mounts sdmc for stdio before application constructors run. Replacing that device with the
+    // legacy FsLib devoptab can fail on current toolchains and makes SaveNX return before it can create its log.
+    if (fsdevGetDeviceFileSystem("sdmc") == nullptr)
+    {
+        const Result mountResult = fsdevMountSdmc();
+        if (R_FAILED(mountResult)) { return false; }
+    }
 
     return true;
 }

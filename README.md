@@ -2,7 +2,7 @@
 
 SaveNX é um homebrew para Nintendo Switch com Atmosphère que cria backups completos dos saves no cartão SD e no Google Drive. Os backups são separados pelo UID real de cada perfil do console e pelo Title ID do jogo, e podem ser restaurados pelo próprio aplicativo.
 
-> Status: versão de desenvolvimento (`0.1.3`). Faça testes com um save sem valor antes de depender do aplicativo. Feche o jogo antes de copiar ou restaurar dados e mantenha ao menos uma cópia fora do console.
+> Status: versão de desenvolvimento (`0.1.4`). Faça testes com um save sem valor antes de depender do aplicativo. Feche o jogo antes de copiar ou restaurar dados e mantenha ao menos uma cópia fora do console.
 
 Consulte também o [estado de validação](docs/VALIDACAO.md), incluindo o que ainda exige o toolchain e um console real.
 
@@ -62,7 +62,7 @@ Ao iniciar a `v0.1.1` ou posterior pela primeira vez, arquivos da `v0.1.0` são 
 - `sdmc:/config/SaveNX/` → as subpastas `config/`, `cache/` e `logs/`;
 - ZIPs temporários da raiz → `sdmc:/switch/SaveNX/temp/`.
 
-A `v0.1.3` inicializa o log antes dos demais serviços. Se o aplicativo não conseguir abrir, o motivo da inicialização fica registrado em `sdmc:/switch/SaveNX/logs/SaveNX.log`.
+A `v0.1.4` usa a montagem `sdmc` padrão do libnx e inicializa o log antes dos demais serviços. Se o aplicativo não conseguir abrir, o motivo da inicialização fica registrado em `sdmc:/switch/SaveNX/logs/SaveNX.log`.
 
 ## Uso rápido
 

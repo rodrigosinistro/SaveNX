@@ -1,4 +1,4 @@
-# Estado de validação da versão 0.1.3
+# Estado de validação da versão 0.1.4
 
 Verificações executadas neste pacote:
 
@@ -10,8 +10,8 @@ Verificações executadas neste pacote:
 - o bundle de CA é parseável pelo OpenSSL;
 - ícone NRO: JPEG 256 × 256; ícone de cabeçalho: PNG 48 × 50;
 - `git diff --check` não encontrou erros de whitespace.
-- o relatório de falha real da `v0.1.1` foi diagnosticado como estouro de pilha na migração recursiva; a `v0.1.2` substitui a recursão por uma fila alocada no heap e preserva a migração parcial.
-- a `v0.1.3` monta o SD e inicializa o log antes dos demais serviços, permitindo diagnosticar encerramentos antecipados que não geram relatório do Atmosphère.
+- o relatório de falha recebido corresponde ao Build ID da `v0.1.0`, não às compilações posteriores; a `v0.1.2` ainda substitui a migração recursiva por uma fila alocada no heap para evitar estouro de pilha.
+- a `v0.1.4` preserva a montagem `sdmc` padrão do libnx, simplifica a criação inicial de diretórios e inicializa o log antes dos demais serviços.
 
 Limite deste ambiente: devkitPro/devkitA64 e `libnx` não estão instalados, portanto `SaveNX.nro` não foi produzido localmente. O workflow em `.github/workflows/build.yml` usa a imagem oficial `devkitpro/devkita64`, que já contém `switch-dev` e `switch-portlibs`, e é o caminho preparado para a compilação completa.
 

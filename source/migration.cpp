@@ -4,7 +4,9 @@
 #include "fslib.hpp"
 
 #include <array>
+#include <cstddef>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -13,6 +15,16 @@ namespace
         std::string_view source;
         std::string_view destination;
     };
+
+    struct PendingDirectory
+    {
+        fslib::Path source;
+        fslib::Path destination;
+        std::size_t parentIndex;
+        bool completed{true};
+    };
+
+    constexpr std::size_t NO_PARENT = static_cast<std::size_t>(-1);
 
     bool move_file_without_overwrite(std::string_view source, std::string_view destination)
     {
@@ -31,35 +43,70 @@ namespace
 
         if (!fslib::directory_exists(destination)) { return fslib::rename_directory(source, destination); }
 
-        fslib::Directory sourceDirectory{source};
-        if (!sourceDirectory.is_open()) { return false; }
+        // Keep traversal state on the heap. A recursive implementation can exhaust the relatively small
+        // application-thread stack when legacy backups and an already-created destination share nested paths.
+        std::vector<PendingDirectory> pendingDirectories{};
+        pendingDirectories.push_back({source, destination, NO_PARENT});
 
-        bool completed = true;
-        for (const fslib::DirectoryEntry &entry : sourceDirectory)
+        for (std::size_t index = 0; index < pendingDirectories.size(); ++index)
         {
-            const fslib::Path oldPath{source / entry};
-            const fslib::Path newPath{destination / entry};
+            // Copy these before appending to the vector because vector growth can relocate its elements.
+            const fslib::Path currentSource{pendingDirectories[index].source};
+            const fslib::Path currentDestination{pendingDirectories[index].destination};
+            fslib::Directory sourceDirectory{currentSource};
+            if (!sourceDirectory.is_open())
+            {
+                pendingDirectories[index].completed = false;
+                continue;
+            }
 
-            if (entry.is_directory())
+            for (const fslib::DirectoryEntry &entry : sourceDirectory)
             {
-                const bool moved = merge_directory_without_overwrite(oldPath, newPath);
-                completed        = moved && completed;
-            }
-            else if (!fslib::file_exists(newPath))
-            {
-                const bool moved = fslib::rename_file(oldPath, newPath);
-                completed        = moved && completed;
-            }
-            else
-            {
-                // Never overwrite data already created by v0.1.1. Keep the legacy copy for manual inspection.
-                completed = false;
+                const fslib::Path oldPath{currentSource / entry};
+                const fslib::Path newPath{currentDestination / entry};
+
+                if (entry.is_directory())
+                {
+                    if (fslib::directory_exists(newPath))
+                    {
+                        pendingDirectories.push_back({oldPath, newPath, index});
+                    }
+                    else
+                    {
+                        const bool moved = fslib::rename_directory(oldPath, newPath);
+                        pendingDirectories[index].completed = moved && pendingDirectories[index].completed;
+                    }
+                }
+                else if (!fslib::file_exists(newPath))
+                {
+                    const bool moved = fslib::rename_file(oldPath, newPath);
+                    pendingDirectories[index].completed = moved && pendingDirectories[index].completed;
+                }
+                else
+                {
+                    // Never overwrite data already created by a newer version. Keep the legacy copy for inspection.
+                    pendingDirectories[index].completed = false;
+                }
             }
         }
 
-        // Removing an empty legacy directory is safe. Failure simply leaves it available for inspection.
-        if (completed) { completed = fslib::delete_directory(source); }
-        return completed;
+        // Delete empty sources from the leaves upward and propagate each result to its parent.
+        for (std::size_t index = pendingDirectories.size(); index-- > 0;)
+        {
+            bool completed = pendingDirectories[index].completed;
+            if (completed)
+            {
+                completed = fslib::delete_directory(pendingDirectories[index].source);
+                pendingDirectories[index].completed = completed;
+            }
+
+            const std::size_t parentIndex = pendingDirectories[index].parentIndex;
+            if (parentIndex != NO_PARENT)
+            {
+                pendingDirectories[parentIndex].completed = completed && pendingDirectories[parentIndex].completed;
+            }
+        }
+        return pendingDirectories.front().completed;
     }
 } // namespace
 

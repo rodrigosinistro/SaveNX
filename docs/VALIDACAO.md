@@ -1,4 +1,4 @@
-# Estado de validação da versão 0.1.1
+# Estado de validação da versão 0.1.2
 
 Verificações executadas neste pacote:
 
@@ -10,6 +10,7 @@ Verificações executadas neste pacote:
 - o bundle de CA é parseável pelo OpenSSL;
 - ícone NRO: JPEG 256 × 256; ícone de cabeçalho: PNG 48 × 50;
 - `git diff --check` não encontrou erros de whitespace.
+- o relatório de falha real da `v0.1.1` foi diagnosticado como estouro de pilha na migração recursiva; a `v0.1.2` substitui a recursão por uma fila alocada no heap e preserva a migração parcial.
 
 Limite deste ambiente: devkitPro/devkitA64 e `libnx` não estão instalados, portanto `SaveNX.nro` não foi produzido localmente. O workflow em `.github/workflows/build.yml` usa a imagem oficial `devkitpro/devkita64`, que já contém `switch-dev` e `switch-portlibs`, e é o caminho preparado para a compilação completa.
 

@@ -9,6 +9,7 @@
 #include "remote/GoogleDrive.hpp"
 #include "remote/WebDav.hpp"
 #include "strings/strings.hpp"
+#include "stringutil.hpp"
 #include "ui/PopMessageManager.hpp"
 
 #include <chrono>

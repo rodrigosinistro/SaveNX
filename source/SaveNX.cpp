@@ -76,11 +76,10 @@ SaveNX::SaveNX()
     // Set boost mode first.
     SaveNX::set_boost_mode();
 
-    // Nothing in SaveNX can really continue without these.
-    ABORT_ON_FAILURE(SaveNX::initialize_services());
+    // Mount the SD and create the unified layout before initializing other services. This lets early startup
+    // failures be recorded instead of returning silently to the Homebrew Menu.
     ABORT_ON_FAILURE(SaveNX::initialize_filesystem());
 
-    // Create the unified layout before the logger and config try to open files inside it.
     for (const std::string_view directory : REQUIRED_DIRECTORIES)
     {
         const fslib::Path path{directory};
@@ -88,24 +87,48 @@ SaveNX::SaveNX()
         ABORT_ON_FAILURE(exists || fslib::create_directories_recursively(path));
     }
 
-    const bool migrationCompleted = migration::migrate_v0_1_0_layout();
-
-    // Create the log file if it hasn't been already.
     logger::initialize();
+    logger::log("Starting SaveNX v%s.", savenx::VERSION.data());
+
+    if (!initialize_service(romfsInit, "RomFS"))
+    {
+        logger::log("Startup stopped before loading application resources.");
+        return;
+    }
+
+    if (!SaveNX::initialize_services())
+    {
+        logger::log("Startup stopped while initializing Switch services.");
+        return;
+    }
+
+    const bool migrationCompleted = migration::migrate_v0_1_0_layout();
     if (!migrationCompleted) { logger::log("SaveNX v0.1.0 path migration was only partially completed."); }
 
     // SDL2
-    ABORT_ON_FAILURE(SaveNX::initialize_sdl());
+    if (!SaveNX::initialize_sdl())
+    {
+        logger::log("Startup stopped while initializing SDL or the system font.");
+        return;
+    }
 
     // Curl.
-    ABORT_ON_FAILURE(curl::initialize());
+    if (!curl::initialize())
+    {
+        logger::log("Startup stopped while initializing cURL.");
+        return;
+    }
 
     // Config and input.
     input::initialize();
     config::initialize();
 
     // These are the strings used in the UI.
-    ABORT_ON_FAILURE(strings::initialize()); // This is fatal now.
+    if (!strings::initialize())
+    {
+        logger::log("Startup stopped while loading interface strings.");
+        return;
+    }
 
     SaveNX::setup_translation_info_strings();
 
@@ -127,6 +150,7 @@ SaveNX::SaveNX()
     SaveNX::applet_mode_warning();
 
     // SaveNX is now running.
+    logger::log("SaveNX startup completed successfully.");
     sm_isRunning = true;
 }
 
@@ -184,11 +208,9 @@ void SaveNX::set_boost_mode()
 
 bool SaveNX::initialize_filesystem()
 {
-    // This needs to be in this specific order
     const bool fslib    = fslib::is_initialized();
-    const bool romfs    = initialize_service(romfsInit, "RomFS");
     const bool fslibDev = fslib && fslib::dev::initialize_sdmc();
-    if (!fslib || !romfs || !fslibDev) { return false; }
+    if (!fslib || !fslibDev) { return false; }
 
     return true;
 }

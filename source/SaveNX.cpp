@@ -1,6 +1,7 @@
 #include "SaveNX.hpp"
 
 #include "StateManager.hpp"
+#include "app_paths.hpp"
 #include "appstates/FileModeState.hpp"
 #include "appstates/MainMenuState.hpp"
 #include "appstates/TaskState.hpp"
@@ -14,6 +15,7 @@
 #include "graphics/screen.hpp"
 #include "input.hpp"
 #include "logging/logger.hpp"
+#include "migration.hpp"
 #include "remote/remote.hpp"
 #include "sdl.hpp"
 #include "strings/strings.hpp"
@@ -22,7 +24,9 @@
 #include "ui/PopMessageManager.hpp"
 #include "version.hpp"
 
+#include <array>
 #include <chrono>
+#include <string_view>
 #include <switch.h>
 #include <thread>
 
@@ -42,6 +46,13 @@ namespace
                                                      .sb_efficiency       = 8,
                                                      .num_bsd_sessions    = 3,
                                                      .bsd_service_type    = BsdServiceType_User};
+
+    constexpr std::array<std::string_view, 6> REQUIRED_DIRECTORIES = {savenx::paths::APP_ROOT,
+                                                                       savenx::paths::CONFIG_DIR,
+                                                                       savenx::paths::CACHE_DIR,
+                                                                       savenx::paths::LOG_DIR,
+                                                                       savenx::paths::TEMP_DIR,
+                                                                       savenx::paths::BACKUP_DIR};
 
 } // namespace
 
@@ -69,8 +80,19 @@ SaveNX::SaveNX()
     ABORT_ON_FAILURE(SaveNX::initialize_services());
     ABORT_ON_FAILURE(SaveNX::initialize_filesystem());
 
+    // Create the unified layout before the logger and config try to open files inside it.
+    for (const std::string_view directory : REQUIRED_DIRECTORIES)
+    {
+        const fslib::Path path{directory};
+        const bool exists = fslib::directory_exists(path);
+        ABORT_ON_FAILURE(exists || fslib::create_directories_recursively(path));
+    }
+
+    const bool migrationCompleted = migration::migrate_v0_1_0_layout();
+
     // Create the log file if it hasn't been already.
     logger::initialize();
+    if (!migrationCompleted) { logger::log("SaveNX v0.1.0 path migration was only partially completed."); }
 
     // SDL2
     ABORT_ON_FAILURE(SaveNX::initialize_sdl());

@@ -95,7 +95,7 @@
         "0: Impossível sair do SaveNX enquanto tarefas estiverem em execução!"
     ],
     "GoogleDriveStrings": [
-        "0: Para continuar, vá a #%s# e insira >%s>!",
+        "0: No telemóvel ou computador, aceda a #%s#, introduza >%s> e autorize o SaveNX.",
         "1: Sessão iniciada com sucesso no Google Drive!",
         "2: Falha na sessão do Google Drive!"
     ],
@@ -159,7 +159,7 @@
         "6: BCAT do Sistema"
     ],
     "SettingsDescriptions": [
-        "0: Define a pasta de trabalho do SaveNX. O valor padrão é `sdmc:\/SaveNX`.",
+        "0: Define a pasta de trabalho do SaveNX. O valor padrão é `sdmc:\/switch\/SaveNX\/backups`.",
         "1: Permite remover títulos da lista negra.",
         "2: Inclui saves do dispositivo ou compartilhados com usuários.",
         "3: Cria automaticamente um backup ao restaurar outro.",

@@ -56,6 +56,9 @@ namespace remote
             /// @return If the user signs in, true. If not, false;
             bool poll_sign_in(std::string_view code);
 
+            /// @brief Returns the Google account connected to this Drive session when available.
+            std::string_view get_account_email() const noexcept;
+
         private:
             /// @brief Google client ID.
             std::string m_clientId{};
@@ -68,6 +71,12 @@ namespace remote
 
             /// @brief Token used for refreshing token when it expires.
             std::string m_refreshToken{};
+
+            /// @brief Email address reported by Drive for confirmation in the UI.
+            std::string m_accountEmail{};
+
+            /// @brief Whether the active client identity came from the private build instead of the SD card.
+            bool m_clientIsEmbedded{};
 
             /// @brief This is to save the authentication header string instead of recreating it over and over.
             std::string m_authHeader{};
@@ -83,6 +92,9 @@ namespace remote
 
             /// @brief Attempts to refresh the auth token if needed.
             bool refresh_token();
+
+            /// @brief Persists the active client identity and refresh token to the private app config folder.
+            bool save_refresh_token();
 
             /// @brief Requests and processes the entire listing for SaveNX.
             bool request_listing();

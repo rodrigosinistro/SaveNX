@@ -95,7 +95,7 @@
         "0: Unable to exit SaveNX while tasks are running!"
     ],
     "GoogleDriveStrings": [
-        "0: To continue, go to #%s# and enter >%s>!",
+        "0: On a phone or computer, open #%s#, enter >%s>, and authorise SaveNX.",
         "1: Successfully signed in to Google Drive!",
         "2: Google Drive sign in failed!"
     ],
@@ -158,7 +158,7 @@
         "6: System BCAT"
     ],
     "SettingsDescriptions": [
-        "0: Sets the working directory for SaveNX. The default value for this is `sdmc:\/SaveNX`.",
+        "0: Sets the working directory for SaveNX. The default value for this is `sdmc:\/switch\/SaveNX\/backups`.",
         "1: Allows you to remove titles from the blacklist.",
         "2: Includes device, or shared saves, with users.",
         "3: Creates a backup automatically when restoring another.",

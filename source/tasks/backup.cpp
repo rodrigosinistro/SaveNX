@@ -1,5 +1,6 @@
 #include "tasks/backup.hpp"
 
+#include "app_paths.hpp"
 #include "config/config.hpp"
 #include "error.hpp"
 #include "fs/fs.hpp"
@@ -111,7 +112,7 @@ void tasks::backup::create_new_backup_local(sys::threadpool::JobData taskData)
 void tasks::backup::create_new_backup_remote(sys::threadpool::JobData taskData)
 {
     // This is the temporary name for the backup.
-    static constexpr const char *BACKUP_PATH = "sdmc:/savenx_backup.zip";
+    static constexpr std::string_view BACKUP_PATH = savenx::paths::TEMP_BACKUP_FILE;
 
     // Cast
     auto castData = std::static_pointer_cast<BackupMenuState::DataStruct>(taskData);
@@ -244,7 +245,7 @@ void tasks::backup::overwrite_backup_local(sys::threadpool::JobData taskData)
 void tasks::backup::overwrite_backup_remote(sys::threadpool::JobData taskData)
 {
     // This is the temporary path for patch backups.
-    static constexpr const char *PATCH_PATH = "sdmc:/savenx_patch.zip";
+    static constexpr std::string_view PATCH_PATH = savenx::paths::TEMP_PATCH_FILE;
 
     // Cast.
     auto castData = std::static_pointer_cast<BackupMenuState::DataStruct>(taskData);
@@ -443,7 +444,7 @@ void tasks::backup::restore_backup_local(sys::threadpool::JobData taskData)
 void tasks::backup::restore_backup_remote(sys::threadpool::JobData taskData)
 {
     // Download path.
-    static constexpr const char *DOWNLOAD_PATH = "sdmc:/savenx_download.zip";
+    static constexpr std::string_view DOWNLOAD_PATH = savenx::paths::TEMP_DOWNLOAD_FILE;
 
     // Cast.
     auto castData = std::static_pointer_cast<BackupMenuState::DataStruct>(taskData);

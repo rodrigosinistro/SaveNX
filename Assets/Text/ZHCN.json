@@ -159,7 +159,7 @@
         "6: 系统BCAT"
     ],
     "SettingsDescriptions": [
-        "0: 设置 SaveNX 的工作目录。默认值为 `sdmc:\/SaveNX`。",
+        "0: 设置 SaveNX 的工作目录。默认值为 `sdmc:\/switch\/SaveNX\/backups`。",
         "1: 允许从黑名单中移除标题。",
         "2: 包括设备或共享存档与用户一起使用。",
         "3: 在恢复其他备份时自动创建备份。",

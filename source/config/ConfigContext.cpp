@@ -1,5 +1,6 @@
 #include "config/ConfigContext.hpp"
 
+#include "app_paths.hpp"
 #include "config/keys.hpp"
 #include "error.hpp"
 #include "json.hpp"
@@ -11,11 +12,6 @@
 
 namespace
 {
-    constexpr std::string_view PATH_DEFAULT_WORK_DIR = "sdmc:/SaveNX";
-    constexpr std::string_view PATH_CONFIG_FOLDER    = "sdmc:/config/SaveNX";
-    constexpr std::string_view PATH_CONFIG_FILE      = "sdmc:/config/SaveNX/SaveNX.json";
-    constexpr std::string_view PATH_PATHS_FILE       = "sdmc:/config/SaveNX/Paths.json";
-
     constexpr double DEFAULT_SCALING = 2.5f;
 
     constexpr const char *APP_ID_HEX_FORMAT = "%016llX";
@@ -33,7 +29,7 @@ config::ConfigContext::ConfigContext()
 
 void config::ConfigContext::create_directory()
 {
-    const fslib::Path configDir{PATH_CONFIG_FOLDER};
+    const fslib::Path configDir{savenx::paths::CONFIG_DIR};
     const bool exists = fslib::directory_exists(configDir);
     if (exists) { return; }
 
@@ -42,7 +38,7 @@ void config::ConfigContext::create_directory()
 
 void config::ConfigContext::initialize()
 {
-    m_workingDirectory                                 = PATH_DEFAULT_WORK_DIR;
+    m_workingDirectory                                 = savenx::paths::BACKUP_DIR;
     m_configMap[config::keys::INCLUDE_DEVICE_SAVES]    = 0;
     m_configMap[config::keys::AUTO_BACKUP_ON_RESTORE]  = 1;
     m_configMap[config::keys::AUTO_NAME_BACKUPS]       = 0;
@@ -191,11 +187,11 @@ void config::ConfigContext::get_custom_path(uint64_t applicationID, char *buffer
 
 bool config::ConfigContext::load_config_file()
 {
-    const fslib::Path configPath{PATH_CONFIG_FILE};
+    const fslib::Path configPath{savenx::paths::CONFIG_FILE};
     const bool exists = fslib::file_exists(configPath);
     if (!exists) { return false; }
 
-    json::Object configJSON = json::new_object(json_object_from_file, PATH_CONFIG_FILE.data());
+    json::Object configJSON = json::new_object(json_object_from_file, savenx::paths::CONFIG_FILE.data());
     if (!configJSON) { return false; }
 
     json_object_iterator configIter = json::iter_begin(configJSON);
@@ -218,6 +214,12 @@ bool config::ConfigContext::load_config_file()
         else { m_configMap[key] = json_object_get_uint64(value); }
 
         json_object_iter_next(&configIter);
+    }
+
+    // v0.1.0 persisted its default path. Normalize only that exact value and preserve every custom path.
+    if (m_workingDirectory.string() == savenx::paths::legacy::BACKUP_DIR)
+    {
+        m_workingDirectory = savenx::paths::BACKUP_DIR;
     }
 
     return true;
@@ -263,7 +265,7 @@ void config::ConfigContext::save_config_file()
 
     const char *jsonString   = json::get_string(configJSON);
     const int64_t jsonLength = json::length(configJSON);
-    fslib::File configFile{PATH_CONFIG_FILE, FsOpenMode_Create | FsOpenMode_Write, jsonLength};
+    fslib::File configFile{savenx::paths::CONFIG_FILE, FsOpenMode_Create | FsOpenMode_Write, jsonLength};
     if (error::fslib(configFile.is_open())) { return; }
     configFile << jsonString;
 }
@@ -283,7 +285,7 @@ void config::ConfigContext::read_array_to_set(std::unordered_set<uint64_t> &set,
 
 void config::ConfigContext::load_custom_paths()
 {
-    json::Object pathsJSON = json::new_object(json_object_from_file, PATH_PATHS_FILE.data());
+    json::Object pathsJSON = json::new_object(json_object_from_file, savenx::paths::CUSTOM_PATHS_FILE.data());
     if (!pathsJSON) { return; }
 
     json_object_iterator pathsIter = json::iter_begin(pathsJSON);
@@ -316,7 +318,7 @@ void config::ConfigContext::save_custom_paths()
 
     const char *jsonString   = json::get_string(pathsJSON);
     const int64_t jsonLength = json::length(pathsJSON);
-    fslib::File pathsFile{PATH_PATHS_FILE, FsOpenMode_Create | FsOpenMode_Write, jsonLength};
+    fslib::File pathsFile{savenx::paths::CUSTOM_PATHS_FILE, FsOpenMode_Create | FsOpenMode_Write, jsonLength};
     if (error::fslib(pathsFile.is_open())) { return; }
     pathsFile << jsonString;
 }

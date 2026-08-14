@@ -1,5 +1,6 @@
 #include "data/DataContext.hpp"
 
+#include "app_paths.hpp"
 #include "config/config.hpp"
 #include "error.hpp"
 #include "fs/fs.hpp"
@@ -9,9 +10,6 @@
 
 namespace
 {
-    /// @brief This is the path to the cache file.
-    constexpr std::string_view PATH_CACHE_FILE = "sdmc:/config/SaveNX/cache.zip";
-
     /// @brief This is used in multiple places.
     constexpr size_t SIZE_CTRL_DATA = sizeof(NsApplicationControlData);
 }
@@ -200,7 +198,7 @@ void data::DataContext::import_svi_files(sys::Task *task)
 
 void data::DataContext::delete_cache()
 {
-    const fslib::Path cachePath{PATH_CACHE_FILE};
+    const fslib::Path cachePath{savenx::paths::CACHE_FILE};
     const bool cacheExists = fslib::file_exists(cachePath);
     if (cacheExists) { fslib::delete_file(cachePath); };
 }
@@ -210,7 +208,7 @@ bool data::DataContext::read_cache(sys::Task *task)
     if (error::is_null(task)) { return false; }
 
     m_cacheIsValid = false;
-    fs::MiniUnzip cacheZip{PATH_CACHE_FILE};
+    fs::MiniUnzip cacheZip{savenx::paths::CACHE_FILE};
     if (!cacheZip.is_open()) { return false; }
 
     const char *statusLoadingCache = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 4);
@@ -241,7 +239,7 @@ bool data::DataContext::write_cache(sys::Task *task)
 {
     if (error::is_null(task)) { return false; }
 
-    const fslib::Path cachePath{PATH_CACHE_FILE};
+    const fslib::Path cachePath{savenx::paths::CACHE_FILE};
     const bool cacheExists = fslib::file_exists(cachePath);
     if (cacheExists && m_cacheIsValid) { return true; }
 

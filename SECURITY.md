@@ -2,9 +2,9 @@
 
 ## Credenciais
 
-Nunca abra uma issue com `client_secret.json`, refresh tokens, códigos OAuth ainda válidos, dumps do console ou saves pessoais. Remova também UIDs e Title IDs do log quando quiser mantê-los privados.
+Nunca abra uma issue com `google-drive.json`, refresh tokens, códigos OAuth ainda válidos, dumps do console ou saves pessoais. Remova também UIDs e Title IDs do log quando quiser mantê-los privados.
 
-O arquivo real de credenciais fica apenas em `sdmc:/config/SaveNX/client_secret.json` e é ignorado pelo Git.
+Os valores do cliente privado são injetados por GitHub Actions secrets e não devem ser commitados. O token da conta fica apenas em `sdmc:/switch/SaveNX/config/google-drive.json`.
 
 ## Restore
 

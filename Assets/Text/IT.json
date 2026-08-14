@@ -159,7 +159,7 @@
         "6: BCAT di sistema"
     ],
     "SettingsDescriptions": [
-        "0: Imposta la cartella di lavoro per SaveNX. Il valore predefinito è `sdmc:\/SaveNX`.",
+        "0: Imposta la cartella di lavoro per SaveNX. Il valore predefinito è `sdmc:\/switch\/SaveNX\/backups`.",
         "1: Permette di rimuovere titoli dalla blacklist.",
         "2: Include i salvataggi del dispositivo o condivisi con gli utenti.",
         "3: Crea automaticamente un backup quando se ne ripristina un altro.",

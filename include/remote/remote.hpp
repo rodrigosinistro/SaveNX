@@ -1,4 +1,5 @@
 #pragma once
+#include "app_paths.hpp"
 #include "remote/Storage.hpp"
 #include "sys/threadpool.hpp"
 
@@ -7,8 +8,8 @@
 namespace remote
 {
     // Both of these are needed in two different places.
-    static constexpr std::string_view PATH_GOOGLE_DRIVE_CONFIG = "sdmc:/config/SaveNX/client_secret.json";
-    static constexpr std::string_view PATH_WEBDAV_CONFIG       = "sdmc:/config/SaveNX/webdav.json";
+    static constexpr std::string_view PATH_GOOGLE_DRIVE_CONFIG = savenx::paths::GOOGLE_DRIVE_FILE;
+    static constexpr std::string_view PATH_WEBDAV_CONFIG       = savenx::paths::WEBDAV_FILE;
 
     /// @brief Returns whether or not the console has an active internet connection.
     bool has_internet_connection() noexcept;

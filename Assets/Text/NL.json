@@ -159,7 +159,7 @@
         "6: Systeem BCAT"
     ],
     "SettingsDescriptions": [
-        "0: Stelt de werkmap in voor SaveNX. Standaard is `sdmc:\/SaveNX`.",
+        "0: Stelt de werkmap in voor SaveNX. Standaard is `sdmc:\/switch\/SaveNX\/backups`.",
         "1: Hiermee kun je titels van de zwarte lijst verwijderen.",
         "2: Neemt apparaat- of gedeelde saves op met gebruikers.",
         "3: Maakt automatisch een back-up bij het herstellen van een andere.",

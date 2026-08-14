@@ -1,5 +1,6 @@
 #include "logging/logger.hpp"
 
+#include "app_paths.hpp"
 #include "config/config.hpp"
 #include "fslib.hpp"
 
@@ -12,8 +13,6 @@
 
 namespace
 {
-    constexpr const char *PATH_SAVENX_LOG = "sdmc:/config/SaveNX/SaveNX.log";
-
     /// @brief This is the buffer size for log strings.
     constexpr size_t VA_BUFFER_SIZE = 0x1000;
 
@@ -25,7 +24,7 @@ namespace
 void logger::initialize()
 {
     // Can't really log errors for the log before it exists?
-    const fslib::Path logPath{PATH_SAVENX_LOG};
+    const fslib::Path logPath{savenx::paths::LOG_FILE};
     const bool exists = fslib::file_exists(logPath);
     if (!exists) { fslib::create_file(logPath); }
 }
@@ -33,7 +32,7 @@ void logger::initialize()
 void logger::log(const char *format, ...) noexcept
 {
     static std::mutex logLock{};
-    static const fslib::Path logPath{PATH_SAVENX_LOG};
+    static const fslib::Path logPath{savenx::paths::LOG_FILE};
 
     std::array<char, VA_BUFFER_SIZE> vaBuffer = {0};
     std::va_list vaList{};

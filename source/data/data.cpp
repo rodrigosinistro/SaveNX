@@ -2,6 +2,7 @@
 
 #include "appstates/DataLoadingState.hpp"
 #include "appstates/FadeState.hpp"
+#include "config/config.hpp"
 #include "data/DataContext.hpp"
 #include "error.hpp"
 #include "logging/logger.hpp"
@@ -63,12 +64,18 @@ static void data_initialize_task(sys::threadpool::JobData taskData)
 
     if (clearCache) { s_context.delete_cache(); }
 
-    // SaveNX 0.2.1 deliberately bypasses the inherited JKSV title-cache ZIP during startup.
+    // SaveNX 0.2.1+ deliberately bypasses the inherited JKSV title-cache ZIP during startup.
     // On current Switch firmware this cache writer can stall indefinitely at
     // "Writing cache to SD card" / "Gravando cache no cartão SD". The title scan itself
     // is reliable, so prefer a slightly slower cold start over blocking the application.
-    // A replacement cache format can be introduced later without putting startup at risk.
     logger::log("Title cache persistence disabled for startup stability; scanning installed titles directly.");
+
+    // Device-save enumeration is optional and can block indefinitely on some firmware/storage combinations.
+    // SaveNX's core workflow is per-account backup/restore, so keep the synthetic Device user out of startup.
+    // Setting the config key here also neutralizes older config files that still have ShowDevice=1.
+    config::set_by_key(config::keys::SHOW_DEVICE_USER, 0);
+    config::set_by_key(config::keys::INCLUDE_DEVICE_SAVES, 0);
+    logger::log("Device save enumeration disabled during startup for stability.");
 
     s_context.load_application_records(task);
     s_context.import_svi_files(task);

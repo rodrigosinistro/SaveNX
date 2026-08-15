@@ -12,6 +12,14 @@ namespace
 {
     /// @brief This is used in multiple places.
     constexpr size_t SIZE_CTRL_DATA = sizeof(NsApplicationControlData);
+
+    /// @brief Startup scan buffer for the Switch save-data table.
+    constexpr size_t SIZE_SAVE_INFO_BUFFER = 256;
+
+    bool account_uid_equal(AccountUid a, AccountUid b) noexcept
+    {
+        return a.uid[0] == b.uid[0] && a.uid[1] == b.uid[1];
+    }
 }
 
 //                      ---- Public functions ----
@@ -20,46 +28,26 @@ bool data::DataContext::load_create_users(sys::Task *task)
 {
     static constexpr int32_t MAX_SWITCH_ACCOUNTS = 8;
 
-    static constexpr AccountUid ID_SYSTEM_USER = {FsSaveDataType_System};
-    static constexpr AccountUid ID_BCAT_USER   = {FsSaveDataType_Bcat};
-    static constexpr AccountUid ID_DEVICE_USER = {FsSaveDataType_Device};
-    static constexpr AccountUid ID_CACHE_USER  = {FsSaveDataType_Cache};
-
-    static constexpr const char *systemSafe = "System";
-    static constexpr const char *bcatSafe   = "BCAT";
-    static constexpr const char *deviceSafe = "Device";
-    static constexpr const char *cacheSafe  = "Cache";
-
     if (error::is_null(task) || !m_users.empty()) { return false; }
-
-    const bool emplaceDevice = config::get_by_key(config::keys::SHOW_DEVICE_USER);
-    const bool emplaceBCAT   = config::get_by_key(config::keys::SHOW_BCAT_USER);
-    const bool emplaceCache  = config::get_by_key(config::keys::SHOW_CACHE_USER);
-    const bool emplaceSystem = config::get_by_key(config::keys::SHOW_SYSTEM_USER);
 
     const char *statusLoading  = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 0);
     const char *statusCreating = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 1);
-    const char *systemName     = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 0);
-    const char *bcatName       = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 2);
-    const char *deviceName     = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 3);
-    const char *cacheName      = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 5);
     task->set_status(statusLoading);
 
     int total{};
-    AccountUid accounts[8]{};
+    AccountUid accounts[MAX_SWITCH_ACCOUNTS]{};
     const bool accountError = error::libnx(accountListAllUsers(accounts, MAX_SWITCH_ACCOUNTS, &total));
     const bool noAccounts   = total <= 0;
     if (accountError || noAccounts) { return false; }
 
     {
         std::lock_guard userGuard{m_userMutex};
-        for (int i = 0; i < total; i++) { m_users.emplace_back(accounts[i], FsSaveDataType_Account); }
-
         task->set_status(statusCreating);
-        if (emplaceDevice) { m_users.emplace_back(ID_DEVICE_USER, deviceName, deviceSafe, FsSaveDataType_Device); }
-        if (emplaceBCAT) { m_users.emplace_back(ID_BCAT_USER, bcatName, bcatSafe, FsSaveDataType_Bcat); }
-        if (emplaceCache) { m_users.emplace_back(ID_CACHE_USER, cacheName, cacheSafe, FsSaveDataType_Cache); }
-        if (emplaceSystem) { m_users.emplace_back(ID_SYSTEM_USER, systemName, systemSafe, FsSaveDataType_System); }
+
+        // SaveNX intentionally creates only real Switch profiles during normal startup.
+        // Device/BCAT/Cache/System pseudo-users are inherited JKSV concepts and are not
+        // part of the clean-install SaveNX backup flow.
+        for (int i = 0; i < total; i++) { m_users.emplace_back(accounts[i], FsSaveDataType_Account); }
     }
 
     std::lock_guard iconGuard{m_iconQueueMutex};
@@ -73,17 +61,59 @@ void data::DataContext::load_user_save_info(sys::Task *task)
     if (error::is_null(task)) { return; }
 
     const char *statusLoadingUserInfo = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 5);
+    std::string status = stringutil::get_formatted_string(statusLoadingUserInfo, "Nintendo Switch");
+    task->set_status(status);
 
-    for (data::User &user : m_users)
+    // SaveNX 0.2.4 uses one unfiltered read of the canonical User save-data space,
+    // then assigns each account save to its matching real Switch profile in memory.
+    // This deliberately avoids fsOpenSaveDataInfoReaderWithFilter(AccountUid), which
+    // was the remaining blocking path on the test console.
+    fslib::SaveInfoReader infoReader{FsSaveDataSpaceId_User, SIZE_SAVE_INFO_BUFFER};
+    if (!infoReader.is_open())
+    {
+        logger::log("Unable to open the Switch User save-data table during startup.");
+        return;
+    }
+
     {
         std::lock_guard userGuard{m_userMutex};
+        for (data::User &user : m_users) { user.clear_data_entries(); }
+
+        while (infoReader.read())
         {
-            const char *nickname = user.get_nickname();
-            std::string status   = stringutil::get_formatted_string(statusLoadingUserInfo, nickname);
-            task->set_status(status);
+            for (const FsSaveDataInfo &saveInfo : infoReader)
+            {
+                if (saveInfo.save_data_type != FsSaveDataType_Account) { continue; }
+                if (saveInfo.save_data_rank != FsSaveDataRank_Primary) { continue; }
+
+                const uint64_t applicationID = saveInfo.application_id;
+                if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+
+                // Installed application records were loaded before this scan. Never try to
+                // fetch control metadata for an orphan/uninstalled save during startup:
+                // nsGetApplicationControlData on such entries is another avoidable service path.
+                if (!DataContext::title_is_loaded(applicationID))
+                {
+                    logger::log("Skipping orphan account save %016llX during startup.", applicationID);
+                    continue;
+                }
+
+                for (data::User &user : m_users)
+                {
+                    if (user.get_account_save_type() != FsSaveDataType_Account) { continue; }
+                    if (!account_uid_equal(user.get_account_id(), saveInfo.uid)) { continue; }
+
+                    PdmPlayStatistics playStats{};
+                    user.add_data(applicationID, saveInfo, playStats);
+                    break;
+                }
+            }
         }
-        user.load_user_data();
+
+        for (data::User &user : m_users) { user.sort_data(); }
     }
+
+    logger::log("Finished single-pass SaveNX account save-data scan.");
 }
 
 void data::DataContext::get_users(data::UserList &listOut)
@@ -171,7 +201,6 @@ void data::DataContext::import_svi_files(sys::Task *task)
 
     task->set_status(statusLoadingSvi);
 
-    // auto controlData = std::make_unique<NsApplicationControlData>();
     NsApplicationControlData controlData{};
     for (const fslib::DirectoryEntry &entry : sviDir)
     {

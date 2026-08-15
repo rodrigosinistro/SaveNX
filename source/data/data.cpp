@@ -62,12 +62,18 @@ static void data_initialize_task(sys::threadpool::JobData taskData)
     const char *statusFinalizing = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 6);
 
     if (clearCache) { s_context.delete_cache(); }
-    s_context.read_cache(task);
+
+    // SaveNX 0.2.1 deliberately bypasses the inherited JKSV title-cache ZIP during startup.
+    // On current Switch firmware this cache writer can stall indefinitely at
+    // "Writing cache to SD card" / "Gravando cache no cartão SD". The title scan itself
+    // is reliable, so prefer a slightly slower cold start over blocking the application.
+    // A replacement cache format can be introduced later without putting startup at risk.
+    logger::log("Title cache persistence disabled for startup stability; scanning installed titles directly.");
+
     s_context.load_application_records(task);
     s_context.import_svi_files(task);
     s_context.load_create_users(task);
     s_context.load_user_save_info(task);
-    s_context.write_cache(task);
 
     task->set_status(statusFinalizing); // This is here so at least they know something is happening instead of a freeze.
     task->complete();

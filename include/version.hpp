@@ -4,5 +4,5 @@
 
 namespace savenx
 {
-    inline constexpr std::string_view VERSION = "0.1.4";
+    inline constexpr std::string_view VERSION = "0.2.0";
 }

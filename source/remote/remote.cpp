@@ -61,8 +61,25 @@ void remote::initialize(sys::threadpool::JobData jobData)
 {
     const bool driveConfigExists = fslib::file_exists(remote::PATH_GOOGLE_DRIVE_CONFIG);
     const bool webdavExists      = fslib::file_exists(remote::PATH_WEBDAV_CONFIG);
-    // Preserve an existing WebDAV-only setup. Otherwise the private Google client would always take precedence.
-    const bool driveExists = driveConfigExists || (savenx::oauth::has_embedded_google_client() && !webdavExists);
+    const bool embeddedDriveClient = savenx::oauth::has_embedded_google_client();
+
+    // SaveNX 0.2.5 clean-install rule:
+    // An embedded OAuth client makes Google Drive available, but it must not start a
+    // first-run authorization flow from this worker thread. The old path called
+    // TaskState::create_push_fade() from the thread pool even though StateManager is
+    // not thread-safe, racing the data-loading/finalization state and potentially
+    // leaving the application stuck on "Finalizando". A brand-new installation now
+    // reaches the dashboard first. A dedicated main-thread authorization action will
+    // own the first connection flow.
+    if (!driveConfigExists && embeddedDriveClient && !webdavExists)
+    {
+        logger::log("Embedded Google OAuth client detected; first-run authorization deferred until dashboard UI.");
+        return;
+    }
+
+    // Preserve an existing WebDAV-only setup. Otherwise a previously authorized
+    // Google Drive configuration can reconnect automatically.
+    const bool driveExists = driveConfigExists;
     if ((driveExists || webdavExists) && !remote::has_internet_connection())
     {
         const char *popNoInternet = strings::get_by_name(strings::names::REMOTE_POPS, 0);
@@ -83,7 +100,8 @@ void initialize_google_drive()
         auto driveStruct   = std::make_shared<DriveStruct>();
         driveStruct->drive = drive;
 
-        // To do: StateManager isn't thread safe. This might/probably will cause data race randomly.
+        // This path is kept only for an explicit/main-thread reauthorization flow.
+        // Startup no longer reaches it from the thread pool on a clean installation.
         TaskState::create_push_fade(drive_sign_in, driveStruct);
         return;
     }

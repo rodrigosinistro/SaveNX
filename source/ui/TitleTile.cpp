@@ -54,7 +54,22 @@ void ui::TitleTile::render(sdl::SharedTexture &target, int x, int y)
     const int renderX = x - ((width - 128) / 2);
     const int renderY = y - ((width - 128) / 2);
 
-    m_icon->render_stretched(target, renderX, renderY, width, height);
+    if (m_icon) { m_icon->render_stretched(target, renderX, renderY, width, height); }
+    else
+    {
+        // SaveNX 0.2.5 can deliberately enter the dashboard before cosmetic icons
+        // are decoded. Keep the title grid functional with a neutral placeholder
+        // instead of dereferencing a null texture.
+        sdl::render_rect_fill(target, renderX, renderY, width, height, colors::DIALOG_DARK);
+        sdl::text::render(target,
+                          renderX + (width / 2) - 10,
+                          renderY + (height / 2) - 16,
+                          28,
+                          sdl::text::NO_WRAP,
+                          colors::WHITE,
+                          "S");
+    }
+
     if (m_isFavorite) { sdl::text::render(target, renderX + 2, renderY + 2, 28, sdl::text::NO_WRAP, colors::PINK, HEART_CHAR); }
 }
 

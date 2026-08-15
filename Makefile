@@ -40,7 +40,7 @@ INCLUDES	:=	include ./Libraries/FsLib/Switch/FsLib/include ./Libraries/SDLLib/SD
 EXEFS_SRC	:=	exefs_src
 APP_TITLE   :=  SaveNX
 APP_AUTHOR  :=  RodrigoSinistro / JKSV contributors
-APP_VERSION :=  0.2.2
+APP_VERSION :=  0.2.3
 ROMFS	    :=	romfs
 ICON		:=	icon.jpg
 
@@ -221,7 +221,6 @@ $(OFILES_SRC)	: $(HFILES_BIN)
 %.bin.o	%_bin.h :	%.bin
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
-	@$(bin2o)
 
 -include $(DEPENDS)
 

@@ -64,24 +64,23 @@ static void data_initialize_task(sys::threadpool::JobData taskData)
 
     if (clearCache) { s_context.delete_cache(); }
 
-    // SaveNX 0.2.1+ deliberately bypasses the inherited JKSV title-cache ZIP during startup.
-    // On current Switch firmware this cache writer can stall indefinitely at
-    // "Writing cache to SD card" / "Gravando cache no cartão SD". The title scan itself
-    // is reliable, so prefer a slightly slower cold start over blocking the application.
+    // SaveNX deliberately bypasses the inherited JKSV title-cache ZIP during startup.
+    // A cold title scan is preferable to any startup dependency on cache state.
     logger::log("Title cache persistence disabled for startup stability; scanning installed titles directly.");
 
-    // Device-save enumeration is optional and can block indefinitely on some firmware/storage combinations.
-    // SaveNX's core workflow is per-account backup/restore, so keep the synthetic Device user out of startup.
-    // Setting the config key here also neutralizes older config files that still have ShowDevice=1.
+    // Normal SaveNX startup exposes only real account profiles.
     config::set_by_key(config::keys::SHOW_DEVICE_USER, 0);
     config::set_by_key(config::keys::INCLUDE_DEVICE_SAVES, 0);
     logger::log("Device save enumeration disabled during startup for stability.");
 
+    // SaveNX 0.2.7 bootstrap rule: opening the application must never depend on save discovery.
+    // Load only installed title metadata and real Switch profiles. Save discovery will be
+    // performed lazily after the dashboard is visible, when the user opens/backs up a title.
     s_context.load_application_records(task);
     s_context.import_svi_files(task);
     s_context.load_create_users(task);
-    s_context.load_user_save_info(task);
+    logger::log("Startup save discovery deferred; entering dashboard with profile/title metadata only.");
 
-    task->set_status(statusFinalizing); // This is here so at least they know something is happening instead of a freeze.
+    task->set_status(statusFinalizing);
     task->complete();
 }

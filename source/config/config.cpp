@@ -6,18 +6,44 @@
 namespace
 {
     config::ConfigContext s_context{};
+
+    void apply_savenx_startup_baseline()
+    {
+        // SaveNX's supported startup path is intentionally limited to real account saves.
+        // These inherited JKSV options can trigger extra system save enumeration and are
+        // disabled regardless of whether this is a clean install or a stale config file.
+        s_context.set_by_key(config::keys::INCLUDE_DEVICE_SAVES, 0);
+        s_context.set_by_key(config::keys::LIST_ACCOUNT_SYS_SAVES, 0);
+        s_context.set_by_key(config::keys::SHOW_DEVICE_USER, 0);
+        s_context.set_by_key(config::keys::SHOW_BCAT_USER, 0);
+        s_context.set_by_key(config::keys::SHOW_CACHE_USER, 0);
+        s_context.set_by_key(config::keys::SHOW_SYSTEM_USER, 0);
+
+        // Mountability is validated when an actual backup/restore operation starts,
+        // never by mounting every save during application initialization.
+        s_context.set_by_key(config::keys::ONLY_LIST_MOUNTABLE, 0);
+    }
 }
 
 void config::initialize()
 {
-    // Ensure the directory actually exists.
+    // A clean SaveNX folder is a first-class installation path. Create whatever
+    // runtime directories are needed and continue with compiled defaults if no
+    // previous config exists.
     s_context.create_directory();
+    const bool loadedExistingConfig = s_context.load();
 
-    // This will load the config if the file is found.
-    s_context.load();
+    apply_savenx_startup_baseline();
+
+    if (loadedExistingConfig) { logger::log("SaveNX configuration loaded; startup safety baseline applied."); }
+    else { logger::log("SaveNX clean installation detected; using self-contained startup defaults."); }
 }
 
-void config::reset_to_default() { s_context.initialize(); }
+void config::reset_to_default()
+{
+    s_context.initialize();
+    apply_savenx_startup_baseline();
+}
 
 void config::save() { s_context.save(); }
 

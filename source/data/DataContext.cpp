@@ -12,14 +12,6 @@ namespace
 {
     /// @brief This is used in multiple places.
     constexpr size_t SIZE_CTRL_DATA = sizeof(NsApplicationControlData);
-
-    /// @brief Startup scan buffer for the Switch save-data table.
-    constexpr size_t SIZE_SAVE_INFO_BUFFER = 256;
-
-    bool account_uid_equal(AccountUid a, AccountUid b) noexcept
-    {
-        return a.uid[0] == b.uid[0] && a.uid[1] == b.uid[1];
-    }
 }
 
 //                      ---- Public functions ----
@@ -64,56 +56,47 @@ void data::DataContext::load_user_save_info(sys::Task *task)
     std::string status = stringutil::get_formatted_string(statusLoadingUserInfo, "Nintendo Switch");
     task->set_status(status);
 
-    // SaveNX 0.2.4 uses one unfiltered read of the canonical User save-data space,
-    // then assigns each account save to its matching real Switch profile in memory.
-    // This deliberately avoids fsOpenSaveDataInfoReaderWithFilter(AccountUid), which
-    // was the remaining blocking path on the test console.
-    fslib::SaveInfoReader infoReader{FsSaveDataSpaceId_User, SIZE_SAVE_INFO_BUFFER};
-    if (!infoReader.is_open())
-    {
-        logger::log("Unable to open the Switch User save-data table during startup.");
-        return;
-    }
+    // SaveNX 0.2.6 clean-start model:
+    // Never enumerate the Switch save-data table during application startup.
+    // Both filtered and unfiltered save-data readers have proven capable of blocking
+    // indefinitely on real consoles/firmware. Startup only needs profiles + installed
+    // applications. For every installed title that declares account-save support we
+    // build the attributes required to mount that profile/title combination later.
+    // The actual save is validated lazily when a backup/restore operation mounts it.
+    // A profile that never played a title simply produces a normal mount failure and
+    // is ignored by bulk backup, without ever preventing SaveNX from reaching its UI.
+    std::scoped_lock dataGuard{m_userMutex, m_titleMutex};
 
-    {
-        std::lock_guard userGuard{m_userMutex};
-        for (data::User &user : m_users) { user.clear_data_entries(); }
+    for (data::User &user : m_users) { user.clear_data_entries(); }
 
-        while (infoReader.read())
+    size_t candidates{};
+    for (auto &[applicationID, titleInfo] : m_titleInfo)
+    {
+        if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+        if (!titleInfo.has_save_data_type(FsSaveDataType_Account)) { continue; }
+
+        for (data::User &user : m_users)
         {
-            for (const FsSaveDataInfo &saveInfo : infoReader)
-            {
-                if (saveInfo.save_data_type != FsSaveDataType_Account) { continue; }
-                if (saveInfo.save_data_rank != FsSaveDataRank_Primary) { continue; }
+            if (user.get_account_save_type() != FsSaveDataType_Account) { continue; }
 
-                const uint64_t applicationID = saveInfo.application_id;
-                if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+            FsSaveDataInfo saveInfo{};
+            saveInfo.save_data_space_id = FsSaveDataSpaceId_User;
+            saveInfo.save_data_type     = FsSaveDataType_Account;
+            saveInfo.save_data_rank     = FsSaveDataRank_Primary;
+            saveInfo.application_id     = applicationID;
+            saveInfo.uid                = user.get_account_id();
+            saveInfo.system_save_data_id = 0;
+            saveInfo.save_data_index     = 0;
 
-                // Installed application records were loaded before this scan. Never try to
-                // fetch control metadata for an orphan/uninstalled save during startup:
-                // nsGetApplicationControlData on such entries is another avoidable service path.
-                if (!DataContext::title_is_loaded(applicationID))
-                {
-                    logger::log("Skipping orphan account save %016llX during startup.", applicationID);
-                    continue;
-                }
-
-                for (data::User &user : m_users)
-                {
-                    if (user.get_account_save_type() != FsSaveDataType_Account) { continue; }
-                    if (!account_uid_equal(user.get_account_id(), saveInfo.uid)) { continue; }
-
-                    PdmPlayStatistics playStats{};
-                    user.add_data(applicationID, saveInfo, playStats);
-                    break;
-                }
-            }
+            PdmPlayStatistics playStats{};
+            user.add_data(applicationID, saveInfo, playStats);
+            ++candidates;
         }
-
-        for (data::User &user : m_users) { user.sort_data(); }
     }
 
-    logger::log("Finished single-pass SaveNX account save-data scan.");
+    for (data::User &user : m_users) { user.sort_data(); }
+
+    logger::log("Startup save enumeration bypassed; prepared %zu lazy account-save candidates.", candidates);
 }
 
 void data::DataContext::get_users(data::UserList &listOut)

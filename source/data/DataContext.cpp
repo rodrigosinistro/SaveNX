@@ -65,36 +65,43 @@ void data::DataContext::load_user_save_info(sys::Task *task)
     // The actual save is validated lazily when a backup/restore operation mounts it.
     // A profile that never played a title simply produces a normal mount failure and
     // is ignored by bulk backup, without ever preventing SaveNX from reaching its UI.
-    std::scoped_lock dataGuard{m_userMutex, m_titleMutex};
-
-    for (data::User &user : m_users) { user.clear_data_entries(); }
-
     size_t candidates{};
-    for (auto &[applicationID, titleInfo] : m_titleInfo)
     {
-        if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
-        if (!titleInfo.has_save_data_type(FsSaveDataType_Account)) { continue; }
+        std::scoped_lock dataGuard{m_userMutex, m_titleMutex};
 
-        for (data::User &user : m_users)
+        for (data::User &user : m_users) { user.clear_data_entries(); }
+
+        for (auto &[applicationID, titleInfo] : m_titleInfo)
         {
-            if (user.get_account_save_type() != FsSaveDataType_Account) { continue; }
+            if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+            if (!titleInfo.has_save_data_type(FsSaveDataType_Account)) { continue; }
 
-            FsSaveDataInfo saveInfo{};
-            saveInfo.save_data_space_id = FsSaveDataSpaceId_User;
-            saveInfo.save_data_type     = FsSaveDataType_Account;
-            saveInfo.save_data_rank     = FsSaveDataRank_Primary;
-            saveInfo.application_id     = applicationID;
-            saveInfo.uid                = user.get_account_id();
-            saveInfo.system_save_data_id = 0;
-            saveInfo.save_data_index     = 0;
+            for (data::User &user : m_users)
+            {
+                if (user.get_account_save_type() != FsSaveDataType_Account) { continue; }
 
-            PdmPlayStatistics playStats{};
-            user.add_data(applicationID, saveInfo, playStats);
-            ++candidates;
+                FsSaveDataInfo saveInfo{};
+                saveInfo.save_data_space_id  = FsSaveDataSpaceId_User;
+                saveInfo.save_data_type      = FsSaveDataType_Account;
+                saveInfo.save_data_rank      = FsSaveDataRank_Primary;
+                saveInfo.application_id      = applicationID;
+                saveInfo.uid                 = user.get_account_id();
+                saveInfo.system_save_data_id = 0;
+                saveInfo.save_data_index     = 0;
+
+                PdmPlayStatistics playStats{};
+                user.add_data(applicationID, saveInfo, playStats);
+                ++candidates;
+            }
         }
     }
 
-    for (data::User &user : m_users) { user.sort_data(); }
+    // Sorting consults TitleInfo through the public data API, which locks m_titleMutex.
+    // Never sort while the title mutex is already held.
+    {
+        std::lock_guard userGuard{m_userMutex};
+        for (data::User &user : m_users) { user.sort_data(); }
+    }
 
     logger::log("Startup save enumeration bypassed; prepared %zu lazy account-save candidates.", candidates);
 }

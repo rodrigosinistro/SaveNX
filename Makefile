@@ -40,7 +40,7 @@ INCLUDES	:=	include ./Libraries/FsLib/Switch/FsLib/include ./Libraries/SDLLib/SD
 EXEFS_SRC	:=	exefs_src
 APP_TITLE   :=  SaveNX
 APP_AUTHOR  :=  RodrigoSinistro / JKSV contributors
-APP_VERSION :=  0.2.8
+APP_VERSION :=  0.2.9
 ROMFS	    :=	romfs
 ICON		:=	icon.jpg
 
@@ -65,8 +65,7 @@ LIBS	:=	../Libraries/FsLib/Switch/FsLib/lib/libFsLib.a ../Libraries/SDLLib/SDL/l
 			-lwebp -lpng -ljpeg -lz -lminizip -ljson-c -ltinyxml2 -lnx -lbz2 -lz
 
 #---------------------------------------------------------------------------------
-# list of directories containing libraries, this must be the top level containing
-# include and lib
+# list of directories containing libraries, must be the top level containing include and lib
 #---------------------------------------------------------------------------------
 LIBDIRS	:= $(PORTLIBS) $(LIBNX)
 

@@ -17,6 +17,9 @@ namespace remote
     /// @brief Initializes the remote service according to the config on the sdmc.
     void initialize(sys::threadpool::JobData jobData);
 
+    /// @brief Starts the Google Drive device authorization flow from the UI/main thread.
+    void request_google_drive_authorization();
+
     /// @brief Returns the pointer to the Storage instance.
     remote::Storage *get_remote_storage() noexcept;
 } // namespace remote

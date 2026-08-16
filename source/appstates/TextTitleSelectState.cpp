@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace
 {
@@ -24,31 +23,6 @@ namespace
     constexpr int ROW_HEIGHT   = 39;
     constexpr int VISIBLE_ROWS = 13;
     constexpr int FONT_SIZE    = 23;
-
-    std::string ascii_fold(std::string_view value)
-    {
-        std::string folded{value};
-        for (char &character : folded)
-        {
-            if (character >= 'A' && character <= 'Z') { character = static_cast<char>(character + ('a' - 'A')); }
-        }
-        return folded;
-    }
-
-    const char *title_for_application(uint64_t applicationID)
-    {
-        data::TitleInfo *titleInfo = data::get_title_info_by_id(applicationID);
-        if (!titleInfo) { return "Titulo sem identificacao"; }
-        const char *title = titleInfo->get_title();
-        return title && title[0] ? title : "Titulo sem identificacao";
-    }
-
-    struct DisplayCandidate
-    {
-        int sourceIndex{};
-        uint64_t applicationID{};
-        std::string foldedTitle{};
-    };
 } // namespace
 
 //                      ---- Construction ----
@@ -103,7 +77,7 @@ void TextTitleSelectState::render()
                           FONT_SIZE,
                           sdl::text::NO_WRAP,
                           colors::WHITE,
-                          "Nenhum jogo disponivel para este perfil.");
+                          "Nenhum candidato de save preparado para este perfil.");
     }
     else
     {
@@ -131,11 +105,10 @@ void TextTitleSelectState::render()
                                       colors::BLUE_GREEN);
             }
 
-            const uint64_t applicationID = m_user->get_application_id_at(sourceIndex);
-            const char *title             = title_for_application(applicationID);
-            std::string rowText{};
-            if (config::is_favorite(applicationID)) { rowText = "* "; }
-            rowText += title;
+            const uint64_t applicationID = m_user ? m_user->get_application_id_at(sourceIndex) : 0;
+            const std::string rowText = stringutil::get_formatted_string("Jogo %d  |  Title ID %016llX",
+                                                                          displayIndex + 1,
+                                                                          static_cast<unsigned long long>(applicationID));
 
             sdl::text::render(m_renderTarget,
                               LIST_X + 12,
@@ -163,67 +136,20 @@ void TextTitleSelectState::render()
 
 void TextTitleSelectState::refresh()
 {
-    uint64_t selectedApplicationID{};
-    const int previousSourceIndex = TextTitleSelectState::get_selected_source_index();
-    if (m_user && previousSourceIndex >= 0)
-    {
-        selectedApplicationID = m_user->get_application_id_at(previousSourceIndex);
-    }
-
     m_displayOrder.clear();
+    m_selected     = 0;
+    m_firstVisible = 0;
 
-    if (!m_user)
-    {
-        m_selected     = 0;
-        m_firstVisible = 0;
-        return;
-    }
+    if (!m_user) { return; }
 
+    // SaveNX 0.2.12 diagnostic path:
+    // Do not resolve TitleInfo, sort titles, decode UTF-8, inspect favorites, mount
+    // saves, or mutate User::m_userData while entering Games. The screen receives a
+    // plain source-index list so we can prove whether the state transition itself is
+    // stable independently from title metadata.
     const int sourceCount = static_cast<int>(m_user->get_total_data_entries());
-    std::vector<DisplayCandidate> candidates{};
-    candidates.reserve(sourceCount);
-
-    // Resolve each title only once. The 0.2.10 implementation resolved TitleInfo from
-    // inside std::stable_sort while mutating User::m_userData, which could block before
-    // the Games screen appeared. SaveNX now sorts a detached display list only.
-    for (int sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex)
-    {
-        const uint64_t applicationID = m_user->get_application_id_at(sourceIndex);
-        const char *title             = title_for_application(applicationID);
-        candidates.push_back({sourceIndex, applicationID, ascii_fold(title)});
-    }
-
-    std::stable_sort(candidates.begin(), candidates.end(), [](const DisplayCandidate &entryA, const DisplayCandidate &entryB) {
-        if (entryA.foldedTitle != entryB.foldedTitle) { return entryA.foldedTitle < entryB.foldedTitle; }
-        return entryA.applicationID < entryB.applicationID;
-    });
-
-    m_displayOrder.reserve(candidates.size());
-    for (const DisplayCandidate &candidate : candidates) { m_displayOrder.push_back(candidate.sourceIndex); }
-
-    const int entryCount = static_cast<int>(m_displayOrder.size());
-    if (entryCount <= 0)
-    {
-        m_selected     = 0;
-        m_firstVisible = 0;
-        return;
-    }
-
-    m_selected = 0;
-    if (selectedApplicationID != 0)
-    {
-        for (int displayIndex = 0; displayIndex < entryCount; ++displayIndex)
-        {
-            const int sourceIndex = m_displayOrder[displayIndex];
-            if (m_user->get_application_id_at(sourceIndex) == selectedApplicationID)
-            {
-                m_selected = displayIndex;
-                break;
-            }
-        }
-    }
-
-    TextTitleSelectState::clamp_window();
+    m_displayOrder.reserve(sourceCount);
+    for (int sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex) { m_displayOrder.push_back(sourceIndex); }
 }
 
 //                      ---- Private functions ----
@@ -309,5 +235,4 @@ void TextTitleSelectState::add_remove_favorite()
     if (applicationID == 0) { return; }
 
     config::add_remove_favorite(applicationID);
-    TextTitleSelectState::refresh();
 }

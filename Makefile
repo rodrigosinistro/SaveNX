@@ -40,7 +40,7 @@ INCLUDES	:=	include ./Libraries/FsLib/Switch/FsLib/include ./Libraries/SDLLib/SD
 EXEFS_SRC	:=	exefs_src
 APP_TITLE   :=  SaveNX
 APP_AUTHOR  :=  RodrigoSinistro / JKSV contributors
-APP_VERSION :=  0.2.9
+APP_VERSION :=  0.2.10
 ROMFS	    :=	romfs
 ICON		:=	icon.jpg
 

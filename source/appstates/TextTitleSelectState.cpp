@@ -10,6 +10,7 @@
 #include "stringutil.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -23,6 +24,94 @@ namespace
     constexpr int ROW_HEIGHT   = 39;
     constexpr int VISIBLE_ROWS = 13;
     constexpr int FONT_SIZE    = 23;
+
+    // Keep title shaping bounded. NACP names can be much larger than what the Games
+    // list can display, and malformed metadata must never reach SDL/HarfBuzz raw.
+    constexpr size_t MAX_DISPLAY_TITLE_BYTES = 128;
+
+    bool is_utf8_continuation(unsigned char value) noexcept { return (value & 0xC0U) == 0x80U; }
+
+    std::string sanitize_display_title(std::string_view input)
+    {
+        std::string output{};
+        output.reserve(std::min(input.size(), MAX_DISPLAY_TITLE_BYTES));
+
+        size_t index{};
+        while (index < input.size() && output.size() < MAX_DISPLAY_TITLE_BYTES)
+        {
+            const unsigned char first = static_cast<unsigned char>(input[index]);
+
+            // Printable ASCII is always safe. Convert ASCII whitespace/control bytes
+            // to a normal space so no layout control character reaches the shaper.
+            if (first < 0x80U)
+            {
+                if (first >= 0x20U && first != 0x7FU) { output.push_back(static_cast<char>(first)); }
+                else if (first == '\t' || first == '\r' || first == '\n')
+                {
+                    if (!output.empty() && output.back() != ' ') { output.push_back(' '); }
+                }
+                ++index;
+                continue;
+            }
+
+            size_t sequenceLength{};
+            bool valid{};
+
+            if (first >= 0xC2U && first <= 0xDFU)
+            {
+                sequenceLength = 2;
+                valid = index + 1 < input.size() &&
+                        is_utf8_continuation(static_cast<unsigned char>(input[index + 1]));
+            }
+            else if (first >= 0xE0U && first <= 0xEFU)
+            {
+                sequenceLength = 3;
+                if (index + 2 < input.size())
+                {
+                    const unsigned char second = static_cast<unsigned char>(input[index + 1]);
+                    const unsigned char third  = static_cast<unsigned char>(input[index + 2]);
+                    valid = is_utf8_continuation(second) && is_utf8_continuation(third);
+
+                    // Reject overlong encodings and UTF-16 surrogate code points.
+                    if (first == 0xE0U && second < 0xA0U) { valid = false; }
+                    if (first == 0xEDU && second >= 0xA0U) { valid = false; }
+                }
+            }
+            else if (first >= 0xF0U && first <= 0xF4U)
+            {
+                sequenceLength = 4;
+                if (index + 3 < input.size())
+                {
+                    const unsigned char second = static_cast<unsigned char>(input[index + 1]);
+                    const unsigned char third  = static_cast<unsigned char>(input[index + 2]);
+                    const unsigned char fourth = static_cast<unsigned char>(input[index + 3]);
+                    valid = is_utf8_continuation(second) && is_utf8_continuation(third) &&
+                            is_utf8_continuation(fourth);
+
+                    // Reject overlong values and code points above U+10FFFF.
+                    if (first == 0xF0U && second < 0x90U) { valid = false; }
+                    if (first == 0xF4U && second > 0x8FU) { valid = false; }
+                }
+            }
+
+            if (!valid || sequenceLength == 0)
+            {
+                output.push_back('?');
+                ++index;
+                continue;
+            }
+
+            if (output.size() + sequenceLength > MAX_DISPLAY_TITLE_BYTES) { break; }
+            output.append(input.substr(index, sequenceLength));
+            index += sequenceLength;
+        }
+
+        // Trim spaces introduced by stripped control characters.
+        while (!output.empty() && output.front() == ' ') { output.erase(output.begin()); }
+        while (!output.empty() && output.back() == ' ') { output.pop_back(); }
+
+        return output;
+    }
 } // namespace
 
 //                      ---- Construction ----
@@ -41,14 +130,14 @@ void TextTitleSelectState::cache_title_label(uint64_t applicationID, std::string
 {
     if (applicationID == 0) { return; }
 
-    if (title.empty())
+    std::string safeTitle = sanitize_display_title(title);
+    if (safeTitle.empty())
     {
-        sm_titleLabels[applicationID] = stringutil::get_formatted_string("Title ID %016llX",
-                                                                         static_cast<unsigned long long>(applicationID));
-        return;
+        safeTitle = stringutil::get_formatted_string("Title ID %016llX",
+                                                     static_cast<unsigned long long>(applicationID));
     }
 
-    sm_titleLabels[applicationID] = std::string{title};
+    sm_titleLabels[applicationID] = std::move(safeTitle);
 }
 
 void TextTitleSelectState::update()
@@ -154,9 +243,9 @@ void TextTitleSelectState::refresh()
 
     if (!m_user) { return; }
 
-    // SaveNX 0.2.15 isolation path: same deterministic source-index list proven by
-    // 0.2.12. No sorting, no favorites lookup, no TitleInfo lookup and no UTF-8
-    // decoding happens while opening Games. Rows only read detached cached strings.
+    // SaveNX 0.2.16 keeps the proven 0.2.12/0.2.15 navigation path. No sorting,
+    // favorites lookup or TitleInfo lookup happens while opening or drawing Games.
+    // Cached labels are sanitized once before they can reach the text renderer.
     const int sourceCount = static_cast<int>(m_user->get_total_data_entries());
     m_displayOrder.reserve(sourceCount);
     for (int sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex) { m_displayOrder.push_back(sourceIndex); }

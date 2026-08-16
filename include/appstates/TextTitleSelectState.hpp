@@ -4,6 +4,8 @@
 #include "data/data.hpp"
 #include "sdl.hpp"
 
+#include <vector>
+
 /// @brief SaveNX text title selection state.
 class TextTitleSelectState final : public TitleSelectCommon
 {
@@ -36,9 +38,13 @@ class TextTitleSelectState final : public TitleSelectCommon
         int m_selected{};
         int m_firstVisible{};
 
+        // Display order is independent from User::m_userData. Sorting the actual save
+        // vector while resolving TitleInfo caused the 0.2.10 Games screen to block.
+        std::vector<int> m_displayOrder{};
+
         void handle_navigation();
         void clamp_window() noexcept;
-        void sort_entries_alphabetically();
+        int get_selected_source_index() const noexcept;
 
         void create_backup_menu();
         void create_title_option_menu();

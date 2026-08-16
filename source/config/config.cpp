@@ -22,6 +22,12 @@ namespace
         // Mountability is validated when an actual backup/restore operation starts,
         // never by mounting every save during application initialization.
         s_context.set_by_key(config::keys::ONLY_LIST_MOUNTABLE, 0);
+
+        // Title icons are deliberately not decoded during startup because that path
+        // previously blocked finalization on real hardware. Until SaveNX has its own
+        // fully lazy icon loader, use the text title browser so every game is legible
+        // instead of showing a grid of placeholder "S" tiles.
+        s_context.set_by_key(config::keys::JKSM_TEXT_MODE, 1);
     }
 }
 

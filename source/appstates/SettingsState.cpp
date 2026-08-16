@@ -12,6 +12,7 @@
 #include "input.hpp"
 #include "keyboard/keyboard.hpp"
 #include "logging/logger.hpp"
+#include "remote/remote.hpp"
 #include "strings/strings.hpp"
 #include "stringutil.hpp"
 
@@ -62,7 +63,8 @@ namespace
         CycleSortType = 17,
         ToggleJKSM    = 18,
         ToggleTrash   = 24,
-        CycleScaling  = 25
+        CycleScaling  = 25,
+        ConnectGoogle = 26
     };
 
 } // namespace
@@ -119,6 +121,10 @@ void SettingsState::load_settings_menu()
     {
         m_settingsMenu->add_option(option);
     }
+
+    // SaveNX-native action. It is deliberately an explicit user action so the OAuth
+    // device flow never races application startup from a worker thread.
+    m_settingsMenu->add_option("Conectar Google Drive");
 }
 
 void SettingsState::load_extra_strings()
@@ -237,6 +243,7 @@ void SettingsState::toggle_options()
         case CaseIndexes::ToggleJKSM:    SettingsState::toggle_jksm_mode(); break;
         case CaseIndexes::ToggleTrash:   SettingsState::toggle_trash_folder(); break;
         case CaseIndexes::CycleScaling:  SettingsState::cycle_anim_scaling(); break;
+        case CaseIndexes::ConnectGoogle: remote::request_google_drive_authorization(); break;
         default:                         config::toggle_by_key(CONFIG_KEY_ARRAY[selected]); break;
     }
 
@@ -251,9 +258,14 @@ void SettingsState::reset_settings()
 
 void SettingsState::create_push_description_message()
 {
-    const int selected      = m_settingsMenu->get_selected();
-    const char *description = strings::get_by_name(strings::names::SETTINGS_DESCRIPTIONS, selected);
+    const int selected = m_settingsMenu->get_selected();
+    if (selected == CaseIndexes::ConnectGoogle)
+    {
+        MessageState::create_push_fade("Conecta o SaveNX ao Google Drive usando o fluxo oficial de código do dispositivo. A senha da sua conta nunca é digitada no Switch.");
+        return;
+    }
 
+    const char *description = strings::get_by_name(strings::names::SETTINGS_DESCRIPTIONS, selected);
     MessageState::create_push_fade(description);
 }
 

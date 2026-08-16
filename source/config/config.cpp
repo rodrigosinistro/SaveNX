@@ -6,18 +6,60 @@
 namespace
 {
     config::ConfigContext s_context{};
+
+    void apply_savenx_startup_baseline()
+    {
+        // SaveNX's supported startup path is intentionally limited to real account saves.
+        // These inherited JKSV options can trigger extra system save enumeration and are
+        // disabled regardless of whether this is a clean install or a stale config file.
+        s_context.set_by_key(config::keys::INCLUDE_DEVICE_SAVES, 0);
+        s_context.set_by_key(config::keys::LIST_ACCOUNT_SYS_SAVES, 0);
+        s_context.set_by_key(config::keys::SHOW_DEVICE_USER, 0);
+        s_context.set_by_key(config::keys::SHOW_BCAT_USER, 0);
+        s_context.set_by_key(config::keys::SHOW_CACHE_USER, 0);
+        s_context.set_by_key(config::keys::SHOW_SYSTEM_USER, 0);
+
+        // Mountability is validated when an actual backup/restore operation starts,
+        // never by mounting every save during application initialization.
+        s_context.set_by_key(config::keys::ONLY_LIST_MOUNTABLE, 0);
+
+        // Title icons are deliberately not decoded during startup because that path
+        // previously blocked finalization on real hardware. Until SaveNX has its own
+        // fully lazy icon loader, use the text title browser so every game is legible
+        // instead of showing a grid of placeholder "S" tiles.
+        s_context.set_by_key(config::keys::JKSM_TEXT_MODE, 1);
+    }
+
+    void apply_savenx_clean_install_defaults()
+    {
+        // SaveNX is cloud-first: a fresh install protects backups on Google Drive by
+        // default. This is applied only when there is no existing config, so a user
+        // who explicitly disables automatic upload keeps that preference on restart.
+        s_context.set_by_key(config::keys::AUTO_UPLOAD, 1);
+    }
 }
 
 void config::initialize()
 {
-    // Ensure the directory actually exists.
+    // A clean SaveNX folder is a first-class installation path. Create whatever
+    // runtime directories are needed and continue with compiled defaults if no
+    // previous config exists.
     s_context.create_directory();
+    const bool loadedExistingConfig = s_context.load();
 
-    // This will load the config if the file is found.
-    s_context.load();
+    apply_savenx_startup_baseline();
+    if (!loadedExistingConfig) { apply_savenx_clean_install_defaults(); }
+
+    if (loadedExistingConfig) { logger::log("SaveNX configuration loaded; startup safety baseline applied."); }
+    else { logger::log("SaveNX clean installation detected; cloud-first defaults enabled."); }
 }
 
-void config::reset_to_default() { s_context.initialize(); }
+void config::reset_to_default()
+{
+    s_context.initialize();
+    apply_savenx_startup_baseline();
+    apply_savenx_clean_install_defaults();
+}
 
 void config::save() { s_context.save(); }
 

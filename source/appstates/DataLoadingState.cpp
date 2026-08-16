@@ -29,7 +29,12 @@ void DataLoadingState::update()
 {
     BaseTask::update_loading_glyph();
     if (!m_task->is_running()) { DataLoadingState::deactivate_state(); }
-    m_context.process_icon_queue();
+
+    // SaveNX 0.2.5: never decode the complete title/profile icon queue while the
+    // application is trying to leave the loading screen. Doing so used to make
+    // "Finalizando" depend on every icon being successfully decoded before the
+    // dashboard could appear. The dashboard already has safe visual fallbacks for
+    // missing icons, so startup must not wait for cosmetic assets.
 }
 
 void DataLoadingState::sub_update() { BaseTask::update_loading_glyph(); }
@@ -60,8 +65,10 @@ void DataLoadingState::initialize_static_members()
 
 void DataLoadingState::deactivate_state()
 {
-    // This is to catch any stragglers.
-    m_context.process_icon_queue();
+    // SaveNX startup is data-first and cosmetics-later. Do not process the inherited
+    // icon queue here: this callback runs while the user still sees "Finalizando".
+    logger::log("Data initialization completed; entering dashboard without blocking on icon queue.");
+
     if (m_destructFunction) { m_destructFunction(); }
     BaseState::deactivate();
 }

@@ -19,26 +19,52 @@ data::TitleInfo::TitleInfo(uint64_t applicationID) noexcept
     uint64_t controlSize{};
 
     // This will filter from even trying to fetch control data for system titles.
-    const bool isSystem   = applicationID & 0x8000000000000000;
-    const bool getError   = !isSystem && error::libnx(nsGetApplicationControlData(NsApplicationControlSource_Storage,
+    const bool isSystem = applicationID & 0x8000000000000000;
+    const bool getError = !isSystem && error::libnx(nsGetApplicationControlData(NsApplicationControlSource_Storage,
                                                                                 m_applicationID,
                                                                                 &m_data,
                                                                                 SIZE_CTRL_DATA,
                                                                                 &controlSize));
     const bool entryError = !getError && error::libnx(nacpGetLanguageEntry(&m_data.nacp, &m_entry));
+
     if (isSystem || getError)
     {
-        const std::string appIDHex = stringutil::get_formatted_string("%04X", m_applicationID & 0xFFFF);
-        m_entry                    = &m_data.nacp.lang[SetLanguage_ENUS]; // I'm hoping this is enough?
+        m_entry = &m_data.nacp.lang[SetLanguage_ENUS];
+        std::snprintf(m_entry->name, sizeof(m_entry->name), "%016llX", static_cast<unsigned long long>(m_applicationID));
+        TitleInfo::get_create_path_safe_title();
+        return;
+    }
 
-        std::snprintf(m_entry->name, TitleInfo::SIZE_PATH_SAFE, "%016lX", m_applicationID);
-        TitleInfo::get_create_path_safe_title();
-    }
-    else if (!getError && !entryError)
+    // Control data is valid even when nacpGetLanguageEntry cannot select a language.
+    // Some installed titles expose a NACP that has no entry matching the current
+    // system language. Older SaveNX/JKSV code left m_entry null in that case; any
+    // later get_title() call dereferenced it and could freeze/crash the application.
+    m_hasData = true;
+    if (entryError || !m_entry)
     {
-        m_hasData = true;
-        TitleInfo::get_create_path_safe_title();
+        m_entry = nullptr;
+        for (NacpLanguageEntry &candidate : m_data.nacp.lang)
+        {
+            if (candidate.name[0] != '\0')
+            {
+                m_entry = &candidate;
+                break;
+            }
+        }
+
+        // A malformed/empty language table should never make title rendering fatal.
+        // Use the Title ID as a deterministic fallback label.
+        if (!m_entry)
+        {
+            m_entry = &m_data.nacp.lang[SetLanguage_ENUS];
+            std::snprintf(m_entry->name,
+                          sizeof(m_entry->name),
+                          "%016llX",
+                          static_cast<unsigned long long>(m_applicationID));
+        }
     }
+
+    TitleInfo::get_create_path_safe_title();
 }
 
 // To do: Make this safer...
@@ -48,10 +74,26 @@ data::TitleInfo::TitleInfo(uint64_t applicationID, NsApplicationControlData &con
     , m_hasData(true)
 {
     const bool entryError = error::libnx(nacpGetLanguageEntry(&m_data.nacp, &m_entry));
-    if (entryError)
+    if (entryError || !m_entry)
     {
-        m_entry = &m_data.nacp.lang[SetLanguage_ENUS];
-        std::snprintf(m_entry->name, TitleInfo::SIZE_PATH_SAFE, "%016lX", m_applicationID);
+        m_entry = nullptr;
+        for (NacpLanguageEntry &candidate : m_data.nacp.lang)
+        {
+            if (candidate.name[0] != '\0')
+            {
+                m_entry = &candidate;
+                break;
+            }
+        }
+
+        if (!m_entry)
+        {
+            m_entry = &m_data.nacp.lang[SetLanguage_ENUS];
+            std::snprintf(m_entry->name,
+                          sizeof(m_entry->name),
+                          "%016llX",
+                          static_cast<unsigned long long>(m_applicationID));
+        }
     }
 
     TitleInfo::get_create_path_safe_title();
@@ -65,11 +107,19 @@ const NsApplicationControlData *data::TitleInfo::get_control_data() const noexce
 
 bool data::TitleInfo::has_control_data() const noexcept { return m_hasData; }
 
-const char *data::TitleInfo::get_title() const noexcept { return m_entry->name; }
+const char *data::TitleInfo::get_title() const noexcept
+{
+    if (m_entry && m_entry->name[0] != '\0') { return m_entry->name; }
+    if (m_pathSafeTitle[0] != '\0') { return m_pathSafeTitle; }
+    return "Titulo sem identificacao";
+}
 
 const char *data::TitleInfo::get_path_safe_title() const noexcept { return m_pathSafeTitle; }
 
-const char *data::TitleInfo::get_publisher() const noexcept { return m_entry->author; }
+const char *data::TitleInfo::get_publisher() const noexcept
+{
+    return m_entry ? m_entry->author : "";
+}
 
 uint64_t data::TitleInfo::get_save_data_owner_id() const noexcept { return m_data.nacp.save_data_owner_id; }
 
@@ -93,11 +143,11 @@ int64_t data::TitleInfo::get_save_data_size_max(uint8_t saveType) const noexcept
     const NacpStruct &nacp = m_data.nacp;
     switch (saveType)
     {
-        case FsSaveDataType_Account:   return std::max(nacp.user_account_save_data_size, nacp.user_account_save_data_size_max);
-        case FsSaveDataType_Bcat:      return nacp.bcat_delivery_cache_storage_size;
-        case FsSaveDataType_Device:    return std::max(nacp.device_save_data_size, nacp.device_save_data_size_max);
+        case FsSaveDataType_Account: return std::max(nacp.user_account_save_data_size, nacp.user_account_save_data_size_max);
+        case FsSaveDataType_Bcat:    return nacp.bcat_delivery_cache_storage_size;
+        case FsSaveDataType_Device:  return std::max(nacp.device_save_data_size, nacp.device_save_data_size_max);
         case FsSaveDataType_Temporary: return nacp.temporary_storage_size;
-        case FsSaveDataType_Cache:     return std::max(nacp.cache_storage_size, nacp.cache_storage_data_and_journal_size_max);
+        case FsSaveDataType_Cache:   return std::max(nacp.cache_storage_size, nacp.cache_storage_data_and_journal_size_max);
     }
 
     return 0;
@@ -202,10 +252,16 @@ void data::TitleInfo::get_create_path_safe_title() noexcept
     const bool englishSafeTitle = useEnglish && hasEnglish;
 
     // This is our final string to use.
-    const char *safeTarget = englishSafeTitle ? englishTitle : m_entry->name;
+    const char *safeTarget = englishSafeTitle ? englishTitle : (m_entry ? m_entry->name : nullptr);
 
-    const bool sanitized = !useTitleId && stringutil::sanitize_string_for_path(safeTarget, m_pathSafeTitle, SIZE_PATH_SAFE);
-    if (useTitleId || !sanitized) { std::snprintf(m_pathSafeTitle, TitleInfo::SIZE_PATH_SAFE, "%016lX", m_applicationID); }
+    const bool sanitized = safeTarget && !useTitleId && stringutil::sanitize_string_for_path(safeTarget, m_pathSafeTitle, SIZE_PATH_SAFE);
+    if (useTitleId || !sanitized)
+    {
+        std::snprintf(m_pathSafeTitle,
+                      TitleInfo::SIZE_PATH_SAFE,
+                      "%016llX",
+                      static_cast<unsigned long long>(m_applicationID));
+    }
 }
 
 bool data::TitleInfo::get_english_title(const char **titleOut) const noexcept

@@ -9,7 +9,22 @@ permissions:
   contents: read
 
 jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run host tests
+        shell: bash
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Werror -Iinclude tests/path_safety_test.cpp -o /tmp/savenx-path-test
+          /tmp/savenx-path-test
+          g++ -std=c++23 -Wall -Wextra -Werror -Iinclude tests/app_layout_test.cpp -o /tmp/savenx-layout-test
+          /tmp/savenx-layout-test
+
   build:
+    needs: host-tests
     runs-on: ubuntu-24.04
     container: devkitpro/devkita64:latest
     steps:
@@ -18,18 +33,44 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Prepare private Google OAuth client
+        shell: bash
+        env:
+          SAVENX_GOOGLE_CLIENT_ID: ${{ secrets.SAVENX_GOOGLE_CLIENT_ID }}
+          SAVENX_GOOGLE_CLIENT_SECRET: ${{ secrets.SAVENX_GOOGLE_CLIENT_SECRET }}
+        run: |
+          if [[ -n "$SAVENX_GOOGLE_CLIENT_ID" && -n "$SAVENX_GOOGLE_CLIENT_SECRET" ]]; then
+            if [[ ! "$SAVENX_GOOGLE_CLIENT_ID" =~ ^[A-Za-z0-9._-]+$ ||
+                  ! "$SAVENX_GOOGLE_CLIENT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "OAuth secrets contain unsupported characters. Copy the values exactly from Google Cloud."
+              exit 1
+            fi
+            {
+              printf '#pragma once\n\n#include <string_view>\n\n'
+              printf 'namespace savenx::oauth\n{\n'
+              printf '    inline constexpr std::string_view GOOGLE_CLIENT_ID = "%s";\n' "$SAVENX_GOOGLE_CLIENT_ID"
+              printf '    inline constexpr std::string_view GOOGLE_CLIENT_SECRET = "%s";\n' "$SAVENX_GOOGLE_CLIENT_SECRET"
+              printf '} // namespace savenx::oauth\n'
+            } > include/oauth_client.generated.hpp
+          elif [[ -n "$SAVENX_GOOGLE_CLIENT_ID" || -n "$SAVENX_GOOGLE_CLIENT_SECRET" ]]; then
+            echo "Both SaveNX OAuth secrets must be configured together."
+            exit 1
+          else
+            echo "Building with google-drive.json fallback; no OAuth credentials are embedded."
+          fi
+
       - name: Build NRO
         run: make -j2
 
       - name: Create SD-ready artifact
         run: |
-          mkdir -p dist/switch/SaveNX dist/docs
+          mkdir -p dist/switch/SaveNX/docs dist/switch/SaveNX/config
           cp SaveNX.nro dist/switch/SaveNX/SaveNX.nro
-          cp README.md dist/README.md
-          cp docs/GOOGLE_DRIVE_SETUP_PT-BR.md dist/docs/
-          cp config/client_secret.example.json dist/
-          cd dist
-          sha256sum switch/SaveNX/SaveNX.nro > SaveNX.nro.sha256
+          cp README.md dist/switch/SaveNX/README.md
+          cp docs/GOOGLE_DRIVE_SETUP_PT-BR.md dist/switch/SaveNX/docs/
+          cp config/google-drive.example.json dist/switch/SaveNX/config/
+          cd dist/switch/SaveNX
+          sha256sum SaveNX.nro > SaveNX.nro.sha256
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

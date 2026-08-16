@@ -6,6 +6,18 @@
 
 namespace gfxutil
 {
+    /// @brief Renders a filled circle using the active SDL renderer.
+    bool render_circle_fill(sdl::SharedTexture &target, int centerX, int centerY, int radius, sdl::Color color) noexcept;
+
+    /// @brief Renders a filled rounded rectangle using the active SDL renderer.
+    bool render_rounded_rect_fill(sdl::SharedTexture &target,
+                                  int x,
+                                  int y,
+                                  int width,
+                                  int height,
+                                  int radius,
+                                  sdl::Color color) noexcept;
+
     /// @brief Generates a generic icon for saves and titles that lack one.
     /// @param text Text to be centered and rendered to the icon.
     /// @param fontSize Size of the font to use.

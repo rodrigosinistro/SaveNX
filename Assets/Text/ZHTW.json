@@ -159,7 +159,7 @@
         "6: 系統 BCAT"
     ],
     "SettingsDescriptions": [
-        "0: 設定 SaveNX 的存取資料夾。預設為 `sdmc:\/SaveNX`。",
+        "0: 設定 SaveNX 的存取資料夾。預設為 `sdmc:\/switch\/SaveNX\/backups`。",
         "1: 允許從黑名單中移除遊戲項目。",
         "2: 包括裝置或共享存檔與使用者一起使用。",
         "3: 在還原其他備份時自動建立備份。",

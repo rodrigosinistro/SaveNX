@@ -2,7 +2,7 @@
 
 SaveNX é um homebrew para Nintendo Switch com Atmosphère que cria backups completos dos saves no cartão SD e no Google Drive. Os backups são separados pelo UID real de cada perfil do console e pelo Title ID do jogo, e podem ser restaurados pelo próprio aplicativo.
 
-> Status: primeira versão de desenvolvimento (`0.1.0`). Faça testes com um save sem valor antes de depender do aplicativo. Feche o jogo antes de copiar ou restaurar dados e mantenha ao menos uma cópia fora do console.
+> Status: versão de desenvolvimento (`0.1.4`). Faça testes com um save sem valor antes de depender do aplicativo. Feche o jogo antes de copiar ou restaurar dados e mantenha ao menos uma cópia fora do console.
 
 Consulte também o [estado de validação](docs/VALIDACAO.md), incluindo o que ainda exige o toolchain e um console real.
 
@@ -13,6 +13,7 @@ Consulte também o [estado de validação](docs/VALIDACAO.md), incluindo o que a
 - Cria automaticamente a pasta `SaveNX` no Google Drive.
 - Organiza o Drive por UID de usuário e Title ID, sem depender do apelido do perfil ou do nome traduzido do jogo.
 - Usa o OAuth 2.0 Device Authorization Grant: a autorização acontece no celular ou computador; o Switch nunca recebe a senha do Gmail.
+- Em builds privados, incorpora o cliente OAuth do SaveNX e elimina a criação ou cópia manual de JSON pelos testadores.
 - Solicita o escopo limitado `drive.file`, usado apenas para arquivos criados pelo aplicativo.
 - Verifica TLS usando uma coleção de autoridades certificadoras, em vez de desabilitar a validação HTTPS.
 - Antes do restore, verifica a identidade do usuário, jogo e slot, lê todo o ZIP para validar CRCs e rejeita caminhos inseguros.
@@ -33,10 +34,16 @@ SaveNX/
 No cartão SD:
 
 ```text
-sdmc:/SaveNX/
-└── USER_<UID de 128 bits>/
-    └── <nome seguro do jogo>/
-        └── <perfil - data e hora>.zip
+sdmc:/switch/SaveNX/
+├── SaveNX.nro
+├── backups/
+│   └── USER_<UID de 128 bits>/
+│       └── <nome seguro do jogo>/
+│           └── <perfil - data e hora>.zip
+├── cache/
+├── config/
+├── logs/
+└── temp/
 ```
 
 Saves compartilhados ou especiais usam chaves estáveis como `DEVICE`, `BCAT`, `CACHE` e `SYSTEM`. Consulte [o formato do backup](docs/BACKUP_FORMAT.md) para os arquivos internos e as regras de compatibilidade.
@@ -46,12 +53,20 @@ Saves compartilhados ou especiais usam chaves estáveis como `DEVICE`, `BCAT`, `
 1. Compile `SaveNX.nro` ou baixe o artefato `SaveNX-switch` gerado pelo GitHub Actions.
 2. Crie `sdmc:/switch/SaveNX/` no cartão SD.
 3. Copie o arquivo para `sdmc:/switch/SaveNX/SaveNX.nro`.
-4. Configure o OAuth seguindo [Configuração do Google Drive](docs/GOOGLE_DRIVE_SETUP_PT-BR.md).
+4. Em um build privado oficial, nenhuma configuração OAuth precisa ser copiada para o SD.
 5. Inicie o Homebrew Menu por *title takeover* (segure `R` ao abrir um jogo), não pelo modo applet do Álbum. Saves grandes precisam da memória completa.
+
+Ao iniciar a `v0.1.1` ou posterior pela primeira vez, arquivos da `v0.1.0` são migrados sem sobrescrever arquivos existentes. A `v0.1.2` faz essa migração sem recursão, inclusive quando uma tentativa anterior deixou pastas parcialmente migradas:
+
+- `sdmc:/SaveNX/` → `sdmc:/switch/SaveNX/backups/`;
+- `sdmc:/config/SaveNX/` → as subpastas `config/`, `cache/` e `logs/`;
+- ZIPs temporários da raiz → `sdmc:/switch/SaveNX/temp/`.
+
+A `v0.1.4` usa a montagem `sdmc` padrão do libnx e inicializa o log antes dos demais serviços. Se o aplicativo não conseguir abrir, o motivo da inicialização fica registrado em `sdmc:/switch/SaveNX/logs/SaveNX.log`.
 
 ## Uso rápido
 
-1. Abra o SaveNX e conclua a autorização do Google quando o código aparecer.
+1. Abra o SaveNX. No primeiro acesso, abra no celular o endereço oficial exibido, digite o código temporário e escolha uma conta cadastrada como testadora.
 2. Selecione o perfil do Switch.
 3. Selecione o jogo.
 4. Escolha `Novo Backup`.
@@ -63,13 +78,13 @@ O restore somente começa após o arquivo passar pela validação. Se o UID, Tit
 
 ## Google Drive e privacidade
 
-O arquivo abaixo é criado a partir das credenciais OAuth do seu próprio projeto Google Cloud:
+No build privado, o cliente OAuth é incorporado no `.nro` durante o GitHub Actions e não aparece no repositório. Após o primeiro login, apenas o estado necessário para renovar a sessão é salvo em:
 
 ```text
-sdmc:/config/SaveNX/client_secret.json
+sdmc:/switch/SaveNX/config/google-drive.json
 ```
 
-Depois do primeiro login ele também contém um `refresh_token`. Não publique, envie ou inclua esse arquivo em commits. O exemplo em [`config/client_secret.example.json`](config/client_secret.example.json) contém apenas valores fictícios.
+Esse arquivo contém um `refresh_token`. Não publique, envie ou inclua esse arquivo em commits. Builds sem cliente incorporado ainda aceitam um JSON manual nesse mesmo caminho como modo de compatibilidade.
 
 O manifesto de cada backup guarda o UID do perfil e identificadores do save para impedir restore cruzado. Esses dados ficam no ZIP sob controle da conta Google autorizada.
 
@@ -91,11 +106,20 @@ make -j
 
 O resultado é `SaveNX.nro`. O workflow em [`.github/workflows/build.yml`](.github/workflows/build.yml) executa a mesma compilação em um container devkitPro e publica um artefato pronto para a árvore do SD.
 
+Para gerar o build privado sem expor o cliente OAuth, o mantenedor configura estes dois *Actions secrets* no repositório:
+
+- `SAVENX_GOOGLE_CLIENT_ID`;
+- `SAVENX_GOOGLE_CLIENT_SECRET`.
+
+Se os dois secrets estiverem ausentes, o projeto continua compilando, mas exige o modo de compatibilidade por JSON descrito em [Configuração do Google Drive](docs/GOOGLE_DRIVE_SETUP_PT-BR.md). O pacote inclui `config/google-drive.example.json` como referência.
+
 O teste host da proteção contra path traversal não exige o toolchain do Switch:
 
 ```bash
 g++ -std=c++23 -Iinclude tests/path_safety_test.cpp -o /tmp/savenx-path-test
 /tmp/savenx-path-test
+g++ -std=c++23 -Iinclude tests/app_layout_test.cpp -o /tmp/savenx-layout-test
+/tmp/savenx-layout-test
 ```
 
 ## Base técnica e inspiração

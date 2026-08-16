@@ -5,9 +5,11 @@
 #include "error.hpp"
 #include "input.hpp"
 #include "logging/logger.hpp"
+#include "oauth_client.hpp"
 #include "remote/GoogleDrive.hpp"
 #include "remote/WebDav.hpp"
 #include "strings/strings.hpp"
+#include "stringutil.hpp"
 #include "ui/PopMessageManager.hpp"
 
 #include <chrono>
@@ -42,6 +44,9 @@ static void drive_sign_in(sys::threadpool::JobData taskData);
 /// @param drive Pointer to the drive instance.
 static void drive_set_savenx_root(remote::GoogleDrive *drive);
 
+/// @brief Shows the connected Google account, falling back to the localized success message.
+static void push_google_drive_success(remote::GoogleDrive *drive);
+
 bool remote::has_internet_connection() noexcept
 {
     NifmInternetConnectionType type{};
@@ -54,8 +59,27 @@ bool remote::has_internet_connection() noexcept
 
 void remote::initialize(sys::threadpool::JobData jobData)
 {
-    const bool driveExists  = fslib::file_exists(remote::PATH_GOOGLE_DRIVE_CONFIG);
-    const bool webdavExists = fslib::file_exists(remote::PATH_WEBDAV_CONFIG);
+    const bool driveConfigExists = fslib::file_exists(remote::PATH_GOOGLE_DRIVE_CONFIG);
+    const bool webdavExists      = fslib::file_exists(remote::PATH_WEBDAV_CONFIG);
+    const bool embeddedDriveClient = savenx::oauth::has_embedded_google_client();
+
+    // SaveNX 0.2.5 clean-install rule:
+    // An embedded OAuth client makes Google Drive available, but it must not start a
+    // first-run authorization flow from this worker thread. The old path called
+    // TaskState::create_push_fade() from the thread pool even though StateManager is
+    // not thread-safe, racing the data-loading/finalization state and potentially
+    // leaving the application stuck on "Finalizando". A brand-new installation now
+    // reaches the dashboard first. A dedicated main-thread authorization action will
+    // own the first connection flow.
+    if (!driveConfigExists && embeddedDriveClient && !webdavExists)
+    {
+        logger::log("Embedded Google OAuth client detected; first-run authorization deferred until dashboard UI.");
+        return;
+    }
+
+    // Preserve an existing WebDAV-only setup. Otherwise a previously authorized
+    // Google Drive configuration can reconnect automatically.
+    const bool driveExists = driveConfigExists;
     if ((driveExists || webdavExists) && !remote::has_internet_connection())
     {
         const char *popNoInternet = strings::get_by_name(strings::names::REMOTE_POPS, 0);
@@ -67,10 +91,33 @@ void remote::initialize(sys::threadpool::JobData jobData)
     else if (webdavExists) { initialize_webdav(); }
 }
 
-void initialize_google_drive()
+void remote::request_google_drive_authorization()
 {
     const int popTicks = ui::PopMessageManager::DEFAULT_TICKS;
 
+    // This entry point is intentionally called only by an explicit UI action. It is
+    // safe to create/push TaskState here because we are on the application's main/UI
+    // thread rather than the worker thread used during startup.
+    if (remote::get_remote_storage())
+    {
+        const char *popDriveSuccess = strings::get_by_name(strings::names::GOOGLE_DRIVE, 1);
+        ui::PopMessageManager::push_message(popTicks, popDriveSuccess);
+        return;
+    }
+
+    if (!remote::has_internet_connection())
+    {
+        const char *popNoInternet = strings::get_by_name(strings::names::REMOTE_POPS, 0);
+        ui::PopMessageManager::push_message(popTicks, popNoInternet);
+        return;
+    }
+
+    logger::log("Starting explicit Google Drive authorization from SaveNX UI.");
+    initialize_google_drive();
+}
+
+void initialize_google_drive()
+{
     s_storage                  = std::make_unique<remote::GoogleDrive>();
     remote::GoogleDrive *drive = static_cast<remote::GoogleDrive *>(s_storage.get());
     if (drive->sign_in_required())
@@ -78,7 +125,8 @@ void initialize_google_drive()
         auto driveStruct   = std::make_shared<DriveStruct>();
         driveStruct->drive = drive;
 
-        // To do: StateManager isn't thread safe. This might/probably will cause data race randomly.
+        // This path is kept only for an explicit/main-thread reauthorization flow.
+        // Startup no longer reaches it from the thread pool on a clean installation.
         TaskState::create_push_fade(drive_sign_in, driveStruct);
         return;
     }
@@ -87,8 +135,7 @@ void initialize_google_drive()
     if (!drive->is_initialized()) { return; }
 
     drive_set_savenx_root(drive);
-    const char *popDriveSuccess = strings::get_by_name(strings::names::GOOGLE_DRIVE, 1);
-    ui::PopMessageManager::push_message(popTicks, popDriveSuccess);
+    push_google_drive_success(drive);
 }
 
 void initialize_webdav()
@@ -146,8 +193,7 @@ static void drive_sign_in(sys::threadpool::JobData taskData)
     if (drive->is_initialized())
     {
         drive_set_savenx_root(drive);
-        const char *popDriveSuccess = strings::get_by_name(strings::names::GOOGLE_DRIVE, 1);
-        ui::PopMessageManager::push_message(popTicks, popDriveSuccess);
+        push_google_drive_success(drive);
     }
     else
     {
@@ -169,4 +215,19 @@ static void drive_set_savenx_root(remote::GoogleDrive *drive)
 
     drive->set_root_directory(savenxDir);
     drive->change_directory(savenxDir);
+}
+
+static void push_google_drive_success(remote::GoogleDrive *drive)
+{
+    const int popTicks = ui::PopMessageManager::DEFAULT_TICKS;
+    const std::string_view accountEmail = drive->get_account_email();
+    if (accountEmail.empty())
+    {
+        const char *popDriveSuccess = strings::get_by_name(strings::names::GOOGLE_DRIVE, 1);
+        ui::PopMessageManager::push_message(popTicks, popDriveSuccess);
+        return;
+    }
+
+    std::string accountMessage = stringutil::get_formatted_string("Google Drive: %s", accountEmail.data());
+    ui::PopMessageManager::push_message(popTicks, accountMessage);
 }

@@ -3,10 +3,10 @@
 #include "appstates/BaseState.hpp"
 #include "data/data.hpp"
 #include "sdl.hpp"
-#include "ui/ControlGuide.hpp"
-#include "ui/IconMenu.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 /// @brief The main
 class MainMenuState final : public BaseState
@@ -50,23 +50,19 @@ class MainMenuState final : public BaseState
         // clang-format on
 
     private:
-        /// @brief Render target this state renders to.
-        sdl::SharedTexture m_renderTarget{};
+        enum class DashboardAction : uint8_t
+        {
+            ProtectAll,
+            Games,
+            History,
+            Settings
+        };
 
-        /// @brief The background gradient.
-        sdl::SharedTexture m_background{};
+        /// @brief Current dashboard action selected by the user.
+        DashboardAction m_selectedAction{DashboardAction::ProtectAll};
 
-        /// @brief Icon for the settings option,
-        sdl::SharedTexture m_settingsIcon{};
-
-        /// @brief Icon for the extras option.
-        sdl::SharedTexture m_extrasIcon{};
-
-        /// @brief Special menu type that uses icons.
-        std::shared_ptr<ui::IconMenu> m_mainMenu{};
-
-        /// @brief Control guide in the bottom right.
-        std::shared_ptr<ui::ControlGuide> m_controlGuide{};
+        /// @brief Profile shown on the dashboard and opened by the Games action.
+        int m_activeUserIndex{};
 
         /// @brief This is the data struct passed to tasks.
         std::shared_ptr<MainMenuState::DataStruct> m_dataStruct{};
@@ -89,17 +85,44 @@ class MainMenuState final : public BaseState
         /// @brief Creates the settings and extras.
         void initialize_settings_extras();
 
-        /// @brief Pushes the icons to the main menu.
-        void initialize_menu();
+        /// @brief Loads the Switch users used by the dashboard.
+        void initialize_users();
 
         /// @brief Initializes the data struct.
         void initialize_data_struct();
 
-        /// @brief Pushes the target state to the vector.
-        void push_target_state();
+        /// @brief Executes the currently highlighted dashboard action.
+        void activate_selected_action();
 
-        /// @brief Creates the user option state.
-        void create_user_options();
+        /// @brief Opens the game list for the active profile.
+        void open_active_user();
+
+        /// @brief Opens one of the persistent legacy states while it is being redesigned.
+        void open_persistent_state(std::shared_ptr<BaseState> &state);
+
+        /// @brief Cycles through the available Switch profiles.
+        void cycle_active_user(int direction) noexcept;
+
+        /// @brief Updates directional navigation between the hero action and bottom tabs.
+        void update_navigation() noexcept;
+
+        /// @brief Renders the complete SaveNX dashboard.
+        void render_dashboard();
+
+        /// @brief Renders the SaveNX identity and active profile.
+        void render_header();
+
+        /// @brief Renders the protection hero and its live status summary.
+        void render_protection_hero();
+
+        /// @brief Renders up to three real games for the active profile.
+        void render_game_cards();
+
+        /// @brief Renders the protection history placeholder.
+        void render_history();
+
+        /// @brief Renders the bottom dashboard navigation and control guide.
+        void render_navigation();
 
         /// @brief Backups up all save data for all users.
         void backup_all_for_all();

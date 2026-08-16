@@ -159,7 +159,7 @@
         "6: BCAT del sistema"
     ],
     "SettingsDescriptions": [
-        "0: Establece el directorio de trabajo para SaveNX. El valor predeterminado es `sdmc:\/SaveNX`.",
+        "0: Establece el directorio de trabajo para SaveNX. El valor predeterminado es `sdmc:\/switch\/SaveNX\/backups`.",
         "1: Permite eliminar títulos de la lista negra.",
         "2: Incluye partidas de dispositivo o compartidas con los usuarios.",
         "3: Crea una copia de seguridad automáticamente al restaurar otra.",

@@ -1,5 +1,6 @@
 #include "data/DataContext.hpp"
 
+#include "app_paths.hpp"
 #include "config/config.hpp"
 #include "error.hpp"
 #include "fs/fs.hpp"
@@ -9,9 +10,6 @@
 
 namespace
 {
-    /// @brief This is the path to the cache file.
-    constexpr std::string_view PATH_CACHE_FILE = "sdmc:/config/SaveNX/cache.zip";
-
     /// @brief This is used in multiple places.
     constexpr size_t SIZE_CTRL_DATA = sizeof(NsApplicationControlData);
 }
@@ -22,46 +20,26 @@ bool data::DataContext::load_create_users(sys::Task *task)
 {
     static constexpr int32_t MAX_SWITCH_ACCOUNTS = 8;
 
-    static constexpr AccountUid ID_SYSTEM_USER = {FsSaveDataType_System};
-    static constexpr AccountUid ID_BCAT_USER   = {FsSaveDataType_Bcat};
-    static constexpr AccountUid ID_DEVICE_USER = {FsSaveDataType_Device};
-    static constexpr AccountUid ID_CACHE_USER  = {FsSaveDataType_Cache};
-
-    static constexpr const char *systemSafe = "System";
-    static constexpr const char *bcatSafe   = "BCAT";
-    static constexpr const char *deviceSafe = "Device";
-    static constexpr const char *cacheSafe  = "Cache";
-
     if (error::is_null(task) || !m_users.empty()) { return false; }
-
-    const bool emplaceDevice = config::get_by_key(config::keys::SHOW_DEVICE_USER);
-    const bool emplaceBCAT   = config::get_by_key(config::keys::SHOW_BCAT_USER);
-    const bool emplaceCache  = config::get_by_key(config::keys::SHOW_CACHE_USER);
-    const bool emplaceSystem = config::get_by_key(config::keys::SHOW_SYSTEM_USER);
 
     const char *statusLoading  = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 0);
     const char *statusCreating = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 1);
-    const char *systemName     = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 0);
-    const char *bcatName       = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 2);
-    const char *deviceName     = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 3);
-    const char *cacheName      = strings::get_by_name(strings::names::SAVE_DATA_TYPES, 5);
     task->set_status(statusLoading);
 
     int total{};
-    AccountUid accounts[8]{};
+    AccountUid accounts[MAX_SWITCH_ACCOUNTS]{};
     const bool accountError = error::libnx(accountListAllUsers(accounts, MAX_SWITCH_ACCOUNTS, &total));
     const bool noAccounts   = total <= 0;
     if (accountError || noAccounts) { return false; }
 
     {
         std::lock_guard userGuard{m_userMutex};
-        for (int i = 0; i < total; i++) { m_users.emplace_back(accounts[i], FsSaveDataType_Account); }
-
         task->set_status(statusCreating);
-        if (emplaceDevice) { m_users.emplace_back(ID_DEVICE_USER, deviceName, deviceSafe, FsSaveDataType_Device); }
-        if (emplaceBCAT) { m_users.emplace_back(ID_BCAT_USER, bcatName, bcatSafe, FsSaveDataType_Bcat); }
-        if (emplaceCache) { m_users.emplace_back(ID_CACHE_USER, cacheName, cacheSafe, FsSaveDataType_Cache); }
-        if (emplaceSystem) { m_users.emplace_back(ID_SYSTEM_USER, systemName, systemSafe, FsSaveDataType_System); }
+
+        // SaveNX intentionally creates only real Switch profiles during normal startup.
+        // Device/BCAT/Cache/System pseudo-users are inherited JKSV concepts and are not
+        // part of the clean-install SaveNX backup flow.
+        for (int i = 0; i < total; i++) { m_users.emplace_back(accounts[i], FsSaveDataType_Account); }
     }
 
     std::lock_guard iconGuard{m_iconQueueMutex};
@@ -75,17 +53,57 @@ void data::DataContext::load_user_save_info(sys::Task *task)
     if (error::is_null(task)) { return; }
 
     const char *statusLoadingUserInfo = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 5);
+    std::string status = stringutil::get_formatted_string(statusLoadingUserInfo, "Nintendo Switch");
+    task->set_status(status);
 
-    for (data::User &user : m_users)
+    // SaveNX 0.2.6 clean-start model:
+    // Never enumerate the Switch save-data table during application startup.
+    // Both filtered and unfiltered save-data readers have proven capable of blocking
+    // indefinitely on real consoles/firmware. Startup only needs profiles + installed
+    // applications. For every installed title that declares account-save support we
+    // build the attributes required to mount that profile/title combination later.
+    // The actual save is validated lazily when a backup/restore operation mounts it.
+    // A profile that never played a title simply produces a normal mount failure and
+    // is ignored by bulk backup, without ever preventing SaveNX from reaching its UI.
+    size_t candidates{};
+    {
+        std::scoped_lock dataGuard{m_userMutex, m_titleMutex};
+
+        for (data::User &user : m_users) { user.clear_data_entries(); }
+
+        for (auto &[applicationID, titleInfo] : m_titleInfo)
+        {
+            if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+            if (!titleInfo.has_save_data_type(FsSaveDataType_Account)) { continue; }
+
+            for (data::User &user : m_users)
+            {
+                if (user.get_account_save_type() != FsSaveDataType_Account) { continue; }
+
+                FsSaveDataInfo saveInfo{};
+                saveInfo.save_data_space_id  = FsSaveDataSpaceId_User;
+                saveInfo.save_data_type      = FsSaveDataType_Account;
+                saveInfo.save_data_rank      = FsSaveDataRank_Primary;
+                saveInfo.application_id      = applicationID;
+                saveInfo.uid                 = user.get_account_id();
+                saveInfo.system_save_data_id = 0;
+                saveInfo.save_data_index     = 0;
+
+                PdmPlayStatistics playStats{};
+                user.add_data(applicationID, saveInfo, playStats);
+                ++candidates;
+            }
+        }
+    }
+
+    // Sorting consults TitleInfo through the public data API, which locks m_titleMutex.
+    // Never sort while the title mutex is already held.
     {
         std::lock_guard userGuard{m_userMutex};
-        {
-            const char *nickname = user.get_nickname();
-            std::string status   = stringutil::get_formatted_string(statusLoadingUserInfo, nickname);
-            task->set_status(status);
-        }
-        user.load_user_data();
+        for (data::User &user : m_users) { user.sort_data(); }
     }
+
+    logger::log("Startup save enumeration bypassed; prepared %zu lazy account-save candidates.", candidates);
 }
 
 void data::DataContext::get_users(data::UserList &listOut)
@@ -173,7 +191,6 @@ void data::DataContext::import_svi_files(sys::Task *task)
 
     task->set_status(statusLoadingSvi);
 
-    // auto controlData = std::make_unique<NsApplicationControlData>();
     NsApplicationControlData controlData{};
     for (const fslib::DirectoryEntry &entry : sviDir)
     {
@@ -200,7 +217,7 @@ void data::DataContext::import_svi_files(sys::Task *task)
 
 void data::DataContext::delete_cache()
 {
-    const fslib::Path cachePath{PATH_CACHE_FILE};
+    const fslib::Path cachePath{savenx::paths::CACHE_FILE};
     const bool cacheExists = fslib::file_exists(cachePath);
     if (cacheExists) { fslib::delete_file(cachePath); };
 }
@@ -210,7 +227,7 @@ bool data::DataContext::read_cache(sys::Task *task)
     if (error::is_null(task)) { return false; }
 
     m_cacheIsValid = false;
-    fs::MiniUnzip cacheZip{PATH_CACHE_FILE};
+    fs::MiniUnzip cacheZip{savenx::paths::CACHE_FILE};
     if (!cacheZip.is_open()) { return false; }
 
     const char *statusLoadingCache = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 4);
@@ -241,7 +258,7 @@ bool data::DataContext::write_cache(sys::Task *task)
 {
     if (error::is_null(task)) { return false; }
 
-    const fslib::Path cachePath{PATH_CACHE_FILE};
+    const fslib::Path cachePath{savenx::paths::CACHE_FILE};
     const bool cacheExists = fslib::file_exists(cachePath);
     if (cacheExists && m_cacheIsValid) { return true; }
 

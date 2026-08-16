@@ -2,6 +2,7 @@
 
 #include "error.hpp"
 #include "logging/logger.hpp"
+#include "oauth_client.hpp"
 #include "remote/Form.hpp"
 #include "remote/URL.hpp"
 #include "remote/remote.hpp"
@@ -51,24 +52,42 @@ namespace
 remote::GoogleDrive::GoogleDrive()
     : Storage("[GD]", true)
 {
-    // Load the json file.
+    // Prefer a client stored with an existing token so v0.1.0 authorizations continue to work after migration.
     json::Object clientJson = json::new_object(json_object_from_file, remote::PATH_GOOGLE_DRIVE_CONFIG.data());
-    if (!clientJson) { return; }
+    const bool validRoot = clientJson && json_object_is_type(clientJson.get(), json_type_object);
+    json_object *installed = validRoot ? json::get_object(clientJson, JSON_KEY_INSTALLED) : nullptr;
+    if (installed && !json_object_is_type(installed, json_type_object)) { installed = nullptr; }
 
-    json_object *installed = json::get_object(clientJson, JSON_KEY_INSTALLED);
-    if (error::is_null(installed)) { return; }
+    json_object *clientId     = installed ? json_object_object_get(installed, JSON_KEY_CLIENT_ID) : nullptr;
+    json_object *clientSecret = installed ? json_object_object_get(installed, JSON_KEY_CLIENT_SECRET) : nullptr;
+    json_object *refreshToken = installed ? json_object_object_get(installed, JSON_KEY_REFRESH_TOKEN) : nullptr;
 
-    json_object *clientId     = json_object_object_get(installed, JSON_KEY_CLIENT_ID);
-    json_object *clientSecret = json_object_object_get(installed, JSON_KEY_CLIENT_SECRET);
-    json_object *refreshToken = json_object_object_get(installed, JSON_KEY_REFRESH_TOKEN);
-    if (error::is_null({clientId, clientSecret})) { return; }
-    // Grab them.
-    m_clientId     = json_object_get_string(clientId);
-    m_clientSecret = json_object_get_string(clientSecret);
+    const char *fileClientId = clientId && json_object_is_type(clientId, json_type_string)
+                                   ? json_object_get_string(clientId)
+                                   : nullptr;
+    const char *fileClientSecret = clientSecret && json_object_is_type(clientSecret, json_type_string)
+                                       ? json_object_get_string(clientSecret)
+                                       : nullptr;
+    const char *fileRefreshToken = refreshToken && json_object_is_type(refreshToken, json_type_string)
+                                       ? json_object_get_string(refreshToken)
+                                       : nullptr;
+    const bool fileClientAvailable = fileClientId && fileClientSecret && fileClientId[0] && fileClientSecret[0];
+    if (fileClientAvailable)
+    {
+        m_clientId     = fileClientId;
+        m_clientSecret = fileClientSecret;
+    }
+    else if (savenx::oauth::has_embedded_google_client())
+    {
+        m_clientId         = savenx::oauth::GOOGLE_CLIENT_ID;
+        m_clientSecret     = savenx::oauth::GOOGLE_CLIENT_SECRET;
+        m_clientIsEmbedded = true;
+    }
+    else { return; }
 
     // Returning here will make is_initialized return false.
-    if (error::is_null(refreshToken)) { return; }
-    m_refreshToken = json_object_get_string(refreshToken);
+    if (!fileRefreshToken || !fileRefreshToken[0]) { return; }
+    m_refreshToken = fileRefreshToken;
 
     if (!GoogleDrive::refresh_token())
     {
@@ -500,17 +519,13 @@ bool remote::GoogleDrive::poll_sign_in(std::string_view code)
     m_tokenExpires = std::time(NULL) + json_object_get_uint64(expiresIn);
     m_authHeader   = std::string(HEADER_AUTH_BEARER) + m_token;
 
-    json::Object config = json::new_object(json_object_from_file, remote::PATH_GOOGLE_DRIVE_CONFIG.data());
-    if (config)
+    if (!GoogleDrive::save_refresh_token())
     {
-        // We're going to attach the refresh token to the installed object so nothing bad can happen to it and I don't
-        // have to deal with Git issues about it.
-        json_object *installed    = json::get_object(config, JSON_KEY_INSTALLED);
-        json_object *refreshToken = json_object_new_string(m_refreshToken.c_str());
-        json_object_object_add(installed, JSON_KEY_REFRESH_TOKEN, refreshToken);
-
-        fslib::File configFile{remote::PATH_GOOGLE_DRIVE_CONFIG, FsOpenMode_Create | FsOpenMode_Write};
-        if (configFile.is_open()) { configFile << json_object_get_string(config.get()); }
+        logger::log(STRING_ERROR_POLLING, "Unable to persist refresh token.");
+        m_token.clear();
+        m_refreshToken.clear();
+        m_authHeader.clear();
+        return false;
     }
 
     if (!GoogleDrive::get_root_id()) { return false; }
@@ -520,12 +535,15 @@ bool remote::GoogleDrive::poll_sign_in(std::string_view code)
     return true;
 }
 
+std::string_view remote::GoogleDrive::get_account_email() const noexcept { return m_accountEmail; }
+
 //                      ---- Private functions ----
 
 bool remote::GoogleDrive::get_root_id()
 {
     // This is the only place this is used. V3 of the API doesn't allow you to retrieve this for some reason?
-    static constexpr const char *API_URL_ABOUT_ROOT_ID = "https://www.googleapis.com/drive/v2/about?fields=rootFolderId";
+    static constexpr const char *API_URL_ABOUT_ROOT_ID =
+        "https://www.googleapis.com/drive/v2/about?fields=rootFolderId,user(emailAddress)";
 
     if (!GoogleDrive::token_is_valid() && !GoogleDrive::refresh_token()) { return false; }
 
@@ -553,6 +571,10 @@ bool remote::GoogleDrive::get_root_id()
 
     m_root   = json_object_get_string(rootId);
     m_parent = m_root;
+
+    json_object *user = json::get_object(parser, "user");
+    json_object *email = user ? json_object_object_get(user, "emailAddress") : nullptr;
+    if (email) { m_accountEmail = json_object_get_string(email); }
 
     return true;
 }
@@ -598,6 +620,52 @@ bool remote::GoogleDrive::refresh_token()
     m_authHeader   = std::string(HEADER_AUTH_BEARER) + m_token;
 
     return true;
+}
+
+bool remote::GoogleDrive::save_refresh_token()
+{
+    json::Object config = json::new_object(json_object_from_file, remote::PATH_GOOGLE_DRIVE_CONFIG.data());
+    if (config && !json_object_is_type(config.get(), json_type_object)) { config.reset(); }
+    if (!config) { config = json::new_object(json_object_new_object); }
+    if (!config) { return false; }
+
+    json_object *installed = json::get_object(config, JSON_KEY_INSTALLED);
+    if (installed && !json_object_is_type(installed, json_type_object))
+    {
+        json_object_object_del(config.get(), JSON_KEY_INSTALLED);
+        installed = nullptr;
+    }
+    if (!installed)
+    {
+        installed = json_object_new_object();
+        if (!installed || !json::add_object(config, JSON_KEY_INSTALLED, installed))
+        {
+            return false;
+        }
+    }
+
+    // An embedded client is already available in the NRO, so only the account token belongs on the SD card.
+    if (!m_clientIsEmbedded)
+    {
+        json_object_object_add(installed, JSON_KEY_CLIENT_ID, json_object_new_string(m_clientId.c_str()));
+        json_object_object_add(installed, JSON_KEY_CLIENT_SECRET, json_object_new_string(m_clientSecret.c_str()));
+    }
+    else
+    {
+        json_object_object_del(installed, JSON_KEY_CLIENT_ID);
+        json_object_object_del(installed, JSON_KEY_CLIENT_SECRET);
+    }
+    json_object_object_add(installed, JSON_KEY_REFRESH_TOKEN, json_object_new_string(m_refreshToken.c_str()));
+
+    const char *configString = json_object_get_string(config.get());
+    const int64_t configSize = std::char_traits<char>::length(configString);
+    fslib::File configFile{remote::PATH_GOOGLE_DRIVE_CONFIG,
+                           FsOpenMode_Create | FsOpenMode_Write,
+                           configSize};
+    if (!configFile.is_open()) { return false; }
+
+    const ssize_t written = configFile.write(configString, configSize);
+    return written == configSize && configFile.flush();
 }
 
 bool remote::GoogleDrive::request_listing()

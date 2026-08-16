@@ -23,4 +23,4 @@ Describe what happened instead.
 
 **Log file output:**
 
-Check `sdmc:/config/SaveNX/SaveNX.log` for useful output. Remove OAuth tokens, personal saves and identifiers you do not want to publish before attaching anything.
+Check `sdmc:/switch/SaveNX/logs/SaveNX.log` for useful output. Remove OAuth tokens, personal saves and identifiers you do not want to publish before attaching anything.

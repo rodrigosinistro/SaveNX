@@ -21,7 +21,13 @@ namespace
     /// @brief This is the number of FsSaveDataInfo entries to allocate and try to read.
     constexpr size_t SIZE_SAVE_INFO_BUFFER = 128;
 
-    // Array of SaveDataSpaceIDs - SaveDataSpaceAll doesn't seem to work as it should...
+    // Account saves live in user save-data spaces. Restrict startup scanning to these
+    // spaces so SaveNX does not probe System/Temporary/SafeMode for every real profile.
+    constexpr std::array<FsSaveDataSpaceId, 2> ACCOUNT_SAVE_DATA_SPACE_ORDER = {FsSaveDataSpaceId_User,
+                                                                                FsSaveDataSpaceId_SdUser};
+
+    // Kept for optional non-account save types. SaveNX does not expose these during
+    // normal startup, but retaining the full list keeps the underlying data model intact.
     constexpr std::array<FsSaveDataSpaceId, 6> SAVE_DATA_SPACE_ORDER = {FsSaveDataSpaceId_System,
                                                                         FsSaveDataSpaceId_User,
                                                                         FsSaveDataSpaceId_SdSystem,
@@ -182,18 +188,65 @@ void data::User::erase_save_info_by_id(uint64_t applicationID)
 void data::User::load_user_data()
 {
     if (!m_userData.empty()) { m_userData.clear(); }
-    const bool accountSys    = config::get_by_key(config::keys::LIST_ACCOUNT_SYS_SAVES);
-    const bool enforceMount  = config::get_by_key(config::keys::ONLY_LIST_MOUNTABLE);
-    const bool isAccountUser = m_saveType != FsSaveDataType_System && m_saveType != FsSaveDataType_SystemBcat;
 
-    for (int i = 0; i < 6; i++)
+    const bool accountSys    = config::get_by_key(config::keys::LIST_ACCOUNT_SYS_SAVES);
+    const bool isAccountUser = m_saveType == FsSaveDataType_Account;
+
+    // SaveNX startup-safe account scan:
+    //  1. Only enumerate the two user save-data spaces for real Switch profiles.
+    //  2. Do not mount every save merely to test mountability during startup.
+    //  3. Do not query play statistics during startup. Backup/restore mounts the selected
+    //     save later when it is actually needed.
+    // This removes three synchronous service paths that can stall on recent firmware.
+    if (isAccountUser)
+    {
+        for (FsSaveDataSpaceId space : ACCOUNT_SAVE_DATA_SPACE_ORDER)
+        {
+            logger::log("Scanning account save-data space %d for %s", static_cast<int>(space), m_nickname);
+
+            fslib::SaveInfoReader infoReader{};
+            infoReader.open(space, m_accountID, SIZE_SAVE_INFO_BUFFER);
+            if (!infoReader.is_open())
+            {
+                logger::log("Account save-data space %d unavailable for %s", static_cast<int>(space), m_nickname);
+                continue;
+            }
+
+            while (infoReader.read())
+            {
+                for (const FsSaveDataInfo &saveInfo : infoReader)
+                {
+                    const uint64_t saveInfoAppID = saveInfo.application_id;
+                    const uint64_t saveInfoSysID = saveInfo.system_save_data_id;
+                    const uint64_t applicationID = saveInfoAppID != 0 ? saveInfoAppID : saveInfoSysID;
+
+                    if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+
+                    const uint8_t saveDataType = saveInfo.save_data_type;
+                    const bool isSystemSave = saveDataType == FsSaveDataType_System || saveDataType == FsSaveDataType_SystemBcat;
+                    if (!accountSys && isSystemSave) { continue; }
+
+                    const bool titleFound = data::title_exists_in_map(applicationID);
+                    if (!titleFound) { data::load_title_to_map(applicationID); }
+
+                    PdmPlayStatistics playStats{};
+                    User::add_data(applicationID, saveInfo, playStats);
+                }
+            }
+
+            logger::log("Finished account save-data space %d for %s", static_cast<int>(space), m_nickname);
+        }
+
+        User::sort_data();
+        return;
+    }
+
+    // Optional non-account save types retain the broad enumeration path, but startup
+    // does not create these pseudo-users in SaveNX 0.2.2+.
+    for (FsSaveDataSpaceId space : SAVE_DATA_SPACE_ORDER)
     {
         fslib::SaveInfoReader infoReader{};
-        if (m_saveType == FsSaveDataType_Account)
-        {
-            infoReader.open(SAVE_DATA_SPACE_ORDER[i], m_accountID, SIZE_SAVE_INFO_BUFFER);
-        }
-        else { infoReader.open(SAVE_DATA_SPACE_ORDER[i], m_saveType, SIZE_SAVE_INFO_BUFFER); }
+        infoReader.open(space, m_saveType, SIZE_SAVE_INFO_BUFFER);
         if (!infoReader.is_open()) { continue; }
 
         while (infoReader.read())
@@ -204,31 +257,12 @@ void data::User::load_user_data()
                 const uint64_t saveInfoSysID = saveInfo.system_save_data_id;
                 const uint64_t applicationID = saveInfoAppID != 0 ? saveInfoAppID : saveInfoSysID;
 
-                const uint8_t saveDataType = saveInfo.save_data_type;
-                const bool isSystemSave    = saveDataType == FsSaveDataType_System || saveDataType == FsSaveDataType_SystemBcat;
-
-                const bool isBlacklisted = config::is_blacklisted(applicationID);
-                const bool systemFilter  = (!accountSys && isAccountUser && isSystemSave);
-
-                bool mounted{};
-                if (!isBlacklisted && !systemFilter && enforceMount)
-                {
-                    fs::ScopedSaveMount saveMount{fs::DEFAULT_SAVE_MOUNT, &saveInfo};
-                    mounted = saveMount.is_open();
-                }
-
-                if (isBlacklisted || systemFilter || (enforceMount && !mounted)) { continue; }
+                if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
 
                 const bool titleFound = data::title_exists_in_map(applicationID);
                 if (!titleFound) { data::load_title_to_map(applicationID); }
 
-                // I don't really care about this failing.
                 PdmPlayStatistics playStats{};
-                pdmqryQueryPlayStatisticsByApplicationIdAndUserAccountId(saveInfo.application_id,
-                                                                         m_accountID,
-                                                                         false,
-                                                                         &playStats);
-
                 User::add_data(applicationID, saveInfo, playStats);
             }
         }

@@ -159,7 +159,7 @@
         "6: System BCAT"
     ],
     "SettingsDescriptions": [
-        "0: Legt das Arbeitsverzeichnis für SaveNX fest. Der Standardwert hierfür ist `sdmc:\/SaveNX`.",
+        "0: Legt das Arbeitsverzeichnis für SaveNX fest. Der Standardwert hierfür ist `sdmc:\/switch\/SaveNX\/backups`.",
         "1: Ermöglicht das Entfernen von Titeln aus der Blacklist.",
         "2: Beinhaltet Geräte- oder gemeinsame Speicherstände mit Benutzern.",
         "3: Erstellt automatisch ein Backup, wenn ein anderes wiederhergestellt wird.",

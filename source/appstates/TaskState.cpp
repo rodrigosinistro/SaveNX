@@ -27,9 +27,25 @@ void TaskState::update()
 void TaskState::render()
 {
     const std::string status = m_task->get_status();
-    const int statusX        = 640 - (sdl::text::get_width(BaseTask::FONT_SIZE, status.c_str()) / 2);
+    const int statusWidth    = sdl::text::get_width(BaseTask::FONT_SIZE, status.c_str());
+    const int statusX        = 640 - (statusWidth / 2);
 
     sdl::render_rect_fill(sdl::Texture::Null, 0, 0, graphics::SCREEN_WIDTH, graphics::SCREEN_HEIGHT, colors::DIM_BACKGROUND);
+
+    // SaveNX task messages can contain important instructions (notably Google OAuth).
+    // Keep them visually independent from the menu/state underneath by placing an
+    // opaque black band behind the status text instead of drawing directly over the
+    // previous screen.
+    constexpr sdl::Color STATUS_PANEL = {0x000000FF};
+    constexpr int STATUS_PANEL_Y      = 315;
+    constexpr int STATUS_PANEL_HEIGHT = 92;
+    sdl::render_rect_fill(sdl::Texture::Null,
+                          24,
+                          STATUS_PANEL_Y,
+                          graphics::SCREEN_WIDTH - 48,
+                          STATUS_PANEL_HEIGHT,
+                          STATUS_PANEL);
+
     sdl::text::render(sdl::Texture::Null, statusX, 351, BaseTask::FONT_SIZE, sdl::text::NO_WRAP, colors::WHITE, status);
 
     BaseTask::render_loading_glyph();

@@ -21,3 +21,6 @@ romfs/Text/
 # Never commit real Google OAuth credentials or refresh tokens.
 client_secret.json
 config/client_secret.json
+google-drive.json
+config/google-drive.json
+include/oauth_client.generated.hpp

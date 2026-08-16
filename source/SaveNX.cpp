@@ -1,6 +1,7 @@
 #include "SaveNX.hpp"
 
 #include "StateManager.hpp"
+#include "app_paths.hpp"
 #include "appstates/FileModeState.hpp"
 #include "appstates/MainMenuState.hpp"
 #include "appstates/TaskState.hpp"
@@ -14,6 +15,7 @@
 #include "graphics/screen.hpp"
 #include "input.hpp"
 #include "logging/logger.hpp"
+#include "migration.hpp"
 #include "remote/remote.hpp"
 #include "sdl.hpp"
 #include "strings/strings.hpp"
@@ -22,7 +24,9 @@
 #include "ui/PopMessageManager.hpp"
 #include "version.hpp"
 
+#include <array>
 #include <chrono>
+#include <string_view>
 #include <switch.h>
 #include <thread>
 
@@ -42,6 +46,19 @@ namespace
                                                      .sb_efficiency       = 8,
                                                      .num_bsd_sessions    = 3,
                                                      .bsd_service_type    = BsdServiceType_User};
+
+    constexpr std::array<std::string_view, 4> REQUIRED_DIRECTORIES_AFTER_LOG = {savenx::paths::CONFIG_DIR,
+                                                                                 savenx::paths::CACHE_DIR,
+                                                                                 savenx::paths::TEMP_DIR,
+                                                                                 savenx::paths::BACKUP_DIR};
+
+    bool ensure_directory(std::string_view directory)
+    {
+        const fslib::Path path{directory};
+        // All startup directories are either /switch/SaveNX or one of its immediate children. Their parent is
+        // prepared first, so avoid the legacy recursive helper during bootstrap.
+        return fslib::directory_exists(path) || fslib::create_directory(path);
+    }
 
 } // namespace
 
@@ -65,25 +82,66 @@ SaveNX::SaveNX()
     // Set boost mode first.
     SaveNX::set_boost_mode();
 
-    // Nothing in SaveNX can really continue without these.
-    ABORT_ON_FAILURE(SaveNX::initialize_services());
+    // Mount the SD and create the unified layout before initializing other services. This lets early startup
+    // failures be recorded instead of returning silently to the Homebrew Menu.
     ABORT_ON_FAILURE(SaveNX::initialize_filesystem());
 
-    // Create the log file if it hasn't been already.
+    // Bring the logger online before creating the remaining data directories so any later failure names the
+    // exact path that could not be prepared.
+    ABORT_ON_FAILURE(ensure_directory(savenx::paths::APP_ROOT));
+    ABORT_ON_FAILURE(ensure_directory(savenx::paths::LOG_DIR));
+
     logger::initialize();
+    logger::log("Starting SaveNX v%s.", savenx::VERSION.data());
+
+    for (const std::string_view directory : REQUIRED_DIRECTORIES_AFTER_LOG)
+    {
+        if (!ensure_directory(directory))
+        {
+            logger::log("Startup stopped while creating %s.", directory.data());
+            return;
+        }
+    }
+
+    if (!initialize_service(romfsInit, "RomFS"))
+    {
+        logger::log("Startup stopped before loading application resources.");
+        return;
+    }
+
+    if (!SaveNX::initialize_services())
+    {
+        logger::log("Startup stopped while initializing Switch services.");
+        return;
+    }
+
+    const bool migrationCompleted = migration::migrate_v0_1_0_layout();
+    if (!migrationCompleted) { logger::log("SaveNX v0.1.0 path migration was only partially completed."); }
 
     // SDL2
-    ABORT_ON_FAILURE(SaveNX::initialize_sdl());
+    if (!SaveNX::initialize_sdl())
+    {
+        logger::log("Startup stopped while initializing SDL or the system font.");
+        return;
+    }
 
     // Curl.
-    ABORT_ON_FAILURE(curl::initialize());
+    if (!curl::initialize())
+    {
+        logger::log("Startup stopped while initializing cURL.");
+        return;
+    }
 
     // Config and input.
     input::initialize();
     config::initialize();
 
     // These are the strings used in the UI.
-    ABORT_ON_FAILURE(strings::initialize()); // This is fatal now.
+    if (!strings::initialize())
+    {
+        logger::log("Startup stopped while loading interface strings.");
+        return;
+    }
 
     SaveNX::setup_translation_info_strings();
 
@@ -105,6 +163,7 @@ SaveNX::SaveNX()
     SaveNX::applet_mode_warning();
 
     // SaveNX is now running.
+    logger::log("SaveNX startup completed successfully.");
     sm_isRunning = true;
 }
 
@@ -162,11 +221,15 @@ void SaveNX::set_boost_mode()
 
 bool SaveNX::initialize_filesystem()
 {
-    // This needs to be in this specific order
-    const bool fslib    = fslib::is_initialized();
-    const bool romfs    = initialize_service(romfsInit, "RomFS");
-    const bool fslibDev = fslib && fslib::dev::initialize_sdmc();
-    if (!fslib || !romfs || !fslibDev) { return false; }
+    if (!fslib::is_initialized()) { return false; }
+
+    // Current libnx mounts sdmc for stdio before application constructors run. Replacing that device with the
+    // legacy FsLib devoptab can fail on current toolchains and makes SaveNX return before it can create its log.
+    if (fsdevGetDeviceFileSystem("sdmc") == nullptr)
+    {
+        const Result mountResult = fsdevMountSdmc();
+        if (R_FAILED(mountResult)) { return false; }
+    }
 
     return true;
 }

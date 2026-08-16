@@ -12,7 +12,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
 # BUILD is the directory where object files & intermediate files will be placed
-# SOURCES is a list of directories containing source code
+# SOURCES is a list of directories containing code
 # DATA is a list of directories containing data files
 # INCLUDES is a list of directories containing header files
 # EXEFS_SRC is the optional input directory containing data copied into exefs, if anything this normally should only contain "main.npdm".
@@ -40,7 +40,7 @@ INCLUDES	:=	include ./Libraries/FsLib/Switch/FsLib/include ./Libraries/SDLLib/SD
 EXEFS_SRC	:=	exefs_src
 APP_TITLE   :=  SaveNX
 APP_AUTHOR  :=  RodrigoSinistro / JKSV contributors
-APP_VERSION :=  0.2.13
+APP_VERSION :=  0.2.14
 ROMFS	    :=	romfs
 ICON		:=	icon.jpg
 
@@ -105,7 +105,7 @@ endif
 #---------------------------------------------------------------------------------
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
-export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.o=.o)
 export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
 
@@ -185,7 +185,6 @@ send: $(BUILD)
 	@nxlink $(TARGET).nro
 
 #---------------------------------------------------------------------------------
-
 debug: $(BUILD)
 	@nxlink -s $(TARGET).nro
 

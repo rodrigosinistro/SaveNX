@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -41,6 +42,13 @@ namespace
         const char *title = titleInfo->get_title();
         return title && title[0] ? title : "Titulo sem identificacao";
     }
+
+    struct DisplayCandidate
+    {
+        int sourceIndex{};
+        uint64_t applicationID{};
+        std::string foldedTitle{};
+    };
 } // namespace
 
 //                      ---- Construction ----
@@ -71,7 +79,7 @@ void TextTitleSelectState::update()
     const bool xPressed = input::button_pressed(HidNpadButton_X);
     const bool yPressed = input::button_pressed(HidNpadButton_Y);
 
-    const int entryCount = m_user ? static_cast<int>(m_user->get_total_data_entries()) : 0;
+    const int entryCount = static_cast<int>(m_displayOrder.size());
     if (aPressed && entryCount > 0) { TextTitleSelectState::create_backup_menu(); }
     else if (xPressed && entryCount > 0) { TextTitleSelectState::create_title_option_menu(); }
     else if (yPressed && entryCount > 0) { TextTitleSelectState::add_remove_favorite(); }
@@ -86,7 +94,7 @@ void TextTitleSelectState::render()
 
     m_renderTarget->clear(colors::TRANSPARENT);
 
-    const int entryCount = m_user ? static_cast<int>(m_user->get_total_data_entries()) : 0;
+    const int entryCount = static_cast<int>(m_displayOrder.size());
     if (entryCount <= 0)
     {
         sdl::text::render(m_renderTarget,
@@ -100,19 +108,30 @@ void TextTitleSelectState::render()
     else
     {
         const int lastVisible = std::min(entryCount, m_firstVisible + VISIBLE_ROWS);
-        for (int index = m_firstVisible; index < lastVisible; ++index)
+        for (int displayIndex = m_firstVisible; displayIndex < lastVisible; ++displayIndex)
         {
-            const int visibleIndex = index - m_firstVisible;
+            const int sourceIndex  = m_displayOrder[displayIndex];
+            const int visibleIndex = displayIndex - m_firstVisible;
             const int rowY         = LIST_Y + (visibleIndex * ROW_HEIGHT);
-            const bool selected    = index == m_selected;
+            const bool selected    = displayIndex == m_selected;
 
             if (selected && hasFocus)
             {
-                sdl::render_rect_fill(m_renderTarget, LIST_X - 6, rowY - 2, LIST_WIDTH + 12, ROW_HEIGHT - 2, colors::DIALOG_DARK);
-                sdl::render_rect_fill(m_renderTarget, LIST_X - 2, rowY + 5, 5, ROW_HEIGHT - 15, colors::BLUE_GREEN);
+                sdl::render_rect_fill(m_renderTarget,
+                                      LIST_X - 6,
+                                      rowY - 2,
+                                      LIST_WIDTH + 12,
+                                      ROW_HEIGHT - 2,
+                                      colors::DIALOG_DARK);
+                sdl::render_rect_fill(m_renderTarget,
+                                      LIST_X - 2,
+                                      rowY + 5,
+                                      5,
+                                      ROW_HEIGHT - 15,
+                                      colors::BLUE_GREEN);
             }
 
-            const uint64_t applicationID = m_user->get_application_id_at(index);
+            const uint64_t applicationID = m_user->get_application_id_at(sourceIndex);
             const char *title             = title_for_application(applicationID);
             std::string rowText{};
             if (config::is_favorite(applicationID)) { rowText = "* "; }
@@ -144,37 +163,61 @@ void TextTitleSelectState::render()
 
 void TextTitleSelectState::refresh()
 {
+    uint64_t selectedApplicationID{};
+    const int previousSourceIndex = TextTitleSelectState::get_selected_source_index();
+    if (m_user && previousSourceIndex >= 0)
+    {
+        selectedApplicationID = m_user->get_application_id_at(previousSourceIndex);
+    }
+
+    m_displayOrder.clear();
+
     if (!m_user)
     {
-        m_selected = 0;
+        m_selected     = 0;
         m_firstVisible = 0;
         return;
     }
 
-    uint64_t selectedApplicationID{};
-    const int beforeCount = static_cast<int>(m_user->get_total_data_entries());
-    if (beforeCount > 0 && m_selected >= 0 && m_selected < beforeCount)
+    const int sourceCount = static_cast<int>(m_user->get_total_data_entries());
+    std::vector<DisplayCandidate> candidates{};
+    candidates.reserve(sourceCount);
+
+    // Resolve each title only once. The 0.2.10 implementation resolved TitleInfo from
+    // inside std::stable_sort while mutating User::m_userData, which could block before
+    // the Games screen appeared. SaveNX now sorts a detached display list only.
+    for (int sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex)
     {
-        selectedApplicationID = m_user->get_application_id_at(m_selected);
+        const uint64_t applicationID = m_user->get_application_id_at(sourceIndex);
+        const char *title             = title_for_application(applicationID);
+        candidates.push_back({sourceIndex, applicationID, ascii_fold(title)});
     }
 
-    TextTitleSelectState::sort_entries_alphabetically();
+    std::stable_sort(candidates.begin(), candidates.end(), [](const DisplayCandidate &entryA, const DisplayCandidate &entryB) {
+        if (entryA.foldedTitle != entryB.foldedTitle) { return entryA.foldedTitle < entryB.foldedTitle; }
+        return entryA.applicationID < entryB.applicationID;
+    });
 
-    const int entryCount = static_cast<int>(m_user->get_total_data_entries());
+    m_displayOrder.reserve(candidates.size());
+    for (const DisplayCandidate &candidate : candidates) { m_displayOrder.push_back(candidate.sourceIndex); }
+
+    const int entryCount = static_cast<int>(m_displayOrder.size());
     if (entryCount <= 0)
     {
-        m_selected = 0;
+        m_selected     = 0;
         m_firstVisible = 0;
         return;
     }
 
+    m_selected = 0;
     if (selectedApplicationID != 0)
     {
-        for (int index = 0; index < entryCount; ++index)
+        for (int displayIndex = 0; displayIndex < entryCount; ++displayIndex)
         {
-            if (m_user->get_application_id_at(index) == selectedApplicationID)
+            const int sourceIndex = m_displayOrder[displayIndex];
+            if (m_user->get_application_id_at(sourceIndex) == selectedApplicationID)
             {
-                m_selected = index;
+                m_selected = displayIndex;
                 break;
             }
         }
@@ -187,9 +230,7 @@ void TextTitleSelectState::refresh()
 
 void TextTitleSelectState::handle_navigation()
 {
-    if (!m_user) { return; }
-
-    const int entryCount = static_cast<int>(m_user->get_total_data_entries());
+    const int entryCount = static_cast<int>(m_displayOrder.size());
     if (entryCount <= 0) { return; }
 
     const bool upPressed        = input::button_pressed(HidNpadButton_AnyUp);
@@ -210,17 +251,10 @@ void TextTitleSelectState::handle_navigation()
 
 void TextTitleSelectState::clamp_window() noexcept
 {
-    if (!m_user)
-    {
-        m_selected = 0;
-        m_firstVisible = 0;
-        return;
-    }
-
-    const int entryCount = static_cast<int>(m_user->get_total_data_entries());
+    const int entryCount = static_cast<int>(m_displayOrder.size());
     if (entryCount <= 0)
     {
-        m_selected = 0;
+        m_selected     = 0;
         m_firstVisible = 0;
         return;
     }
@@ -234,28 +268,20 @@ void TextTitleSelectState::clamp_window() noexcept
     m_firstVisible = std::clamp(m_firstVisible, 0, maxFirst);
 }
 
-void TextTitleSelectState::sort_entries_alphabetically()
+int TextTitleSelectState::get_selected_source_index() const noexcept
 {
-    if (!m_user) { return; }
-
-    auto &entries = m_user->get_user_save_info_list();
-    std::stable_sort(entries.begin(), entries.end(), [](const auto &entryA, const auto &entryB) {
-        const uint64_t applicationIDA = entryA.first;
-        const uint64_t applicationIDB = entryB.first;
-
-        const std::string titleA = ascii_fold(title_for_application(applicationIDA));
-        const std::string titleB = ascii_fold(title_for_application(applicationIDB));
-
-        if (titleA != titleB) { return titleA < titleB; }
-        return applicationIDA < applicationIDB;
-    });
+    if (m_selected < 0 || m_selected >= static_cast<int>(m_displayOrder.size())) { return -1; }
+    return m_displayOrder[m_selected];
 }
 
 void TextTitleSelectState::create_backup_menu()
 {
-    const uint64_t applicationID   = m_user->get_application_id_at(m_selected);
+    const int sourceIndex = TextTitleSelectState::get_selected_source_index();
+    if (!m_user || sourceIndex < 0) { return; }
+
+    const uint64_t applicationID   = m_user->get_application_id_at(sourceIndex);
     data::TitleInfo *titleInfo     = data::get_title_info_by_id(applicationID);
-    const FsSaveDataInfo *saveInfo = m_user->get_save_info_at(m_selected);
+    const FsSaveDataInfo *saveInfo = m_user->get_save_info_at(sourceIndex);
 
     if (!titleInfo || !saveInfo) { return; }
     BackupMenuState::create_and_push(m_user, titleInfo, saveInfo);
@@ -263,9 +289,12 @@ void TextTitleSelectState::create_backup_menu()
 
 void TextTitleSelectState::create_title_option_menu()
 {
-    const uint64_t applicationID   = m_user->get_application_id_at(m_selected);
+    const int sourceIndex = TextTitleSelectState::get_selected_source_index();
+    if (!m_user || sourceIndex < 0) { return; }
+
+    const uint64_t applicationID   = m_user->get_application_id_at(sourceIndex);
     data::TitleInfo *titleInfo     = data::get_title_info_by_id(applicationID);
-    const FsSaveDataInfo *saveInfo = m_user->get_save_info_at(m_selected);
+    const FsSaveDataInfo *saveInfo = m_user->get_save_info_at(sourceIndex);
 
     if (!titleInfo || !saveInfo) { return; }
     TitleOptionState::create_and_push(m_user, titleInfo, saveInfo, this);
@@ -273,7 +302,10 @@ void TextTitleSelectState::create_title_option_menu()
 
 void TextTitleSelectState::add_remove_favorite()
 {
-    const uint64_t applicationID = m_user->get_application_id_at(m_selected);
+    const int sourceIndex = TextTitleSelectState::get_selected_source_index();
+    if (!m_user || sourceIndex < 0) { return; }
+
+    const uint64_t applicationID = m_user->get_application_id_at(sourceIndex);
     if (applicationID == 0) { return; }
 
     config::add_remove_favorite(applicationID);

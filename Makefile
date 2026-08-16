@@ -40,7 +40,7 @@ INCLUDES	:=	include ./Libraries/FsLib/Switch/FsLib/include ./Libraries/SDLLib/SD
 EXEFS_SRC	:=	exefs_src
 APP_TITLE   :=  SaveNX
 APP_AUTHOR  :=  RodrigoSinistro / JKSV contributors
-APP_VERSION :=  0.2.15
+APP_VERSION :=  0.2.16
 ROMFS	    :=	romfs
 ICON		:=	icon.jpg
 
@@ -91,7 +91,7 @@ SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
 #---------------------------------------------------------------------------------
-# use CXX for linking C++ projects, CC for standard C projects
+# use CXX for linking C++ projects, CC for standard C++ projects
 #---------------------------------------------------------------------------------
 ifeq ($(strip $(CPPFILES)),)
 #---------------------------------------------------------------------------------

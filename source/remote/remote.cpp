@@ -91,6 +91,31 @@ void remote::initialize(sys::threadpool::JobData jobData)
     else if (webdavExists) { initialize_webdav(); }
 }
 
+void remote::request_google_drive_authorization()
+{
+    const int popTicks = ui::PopMessageManager::DEFAULT_TICKS;
+
+    // This entry point is intentionally called only by an explicit UI action. It is
+    // safe to create/push TaskState here because we are on the application's main/UI
+    // thread rather than the worker thread used during startup.
+    if (remote::get_remote_storage())
+    {
+        const char *popDriveSuccess = strings::get_by_name(strings::names::GOOGLE_DRIVE, 1);
+        ui::PopMessageManager::push_message(popTicks, popDriveSuccess);
+        return;
+    }
+
+    if (!remote::has_internet_connection())
+    {
+        const char *popNoInternet = strings::get_by_name(strings::names::REMOTE_POPS, 0);
+        ui::PopMessageManager::push_message(popTicks, popNoInternet);
+        return;
+    }
+
+    logger::log("Starting explicit Google Drive authorization from SaveNX UI.");
+    initialize_google_drive();
+}
+
 void initialize_google_drive()
 {
     s_storage                  = std::make_unique<remote::GoogleDrive>();

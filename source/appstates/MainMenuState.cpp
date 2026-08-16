@@ -105,6 +105,50 @@ namespace
         }
         return total;
     }
+
+    size_t prepare_user_save_candidates(data::User *user)
+    {
+        if (!user || user->get_account_save_type() != FsSaveDataType_Account) { return 0; }
+
+        // SaveNX 0.2.8 keeps the proven 0.2.7 dashboard-first startup intact. Game/save
+        // candidates are prepared only after the user explicitly opens Games or starts
+        // Protect All. This path never enumerates the global Switch save-data table.
+        user->clear_data_entries();
+
+        data::TitleInfoList titleList;
+        data::get_title_info_list(titleList);
+        const AccountUid accountID = user->get_account_id();
+
+        for (data::TitleInfo *titleInfo : titleList)
+        {
+            if (!titleInfo || !titleInfo->has_save_data_type(FsSaveDataType_Account)) { continue; }
+
+            const uint64_t applicationID = titleInfo->get_application_id();
+            if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
+
+            FsSaveDataInfo saveInfo{};
+            saveInfo.save_data_space_id  = FsSaveDataSpaceId_User;
+            saveInfo.save_data_type      = FsSaveDataType_Account;
+            saveInfo.save_data_rank      = FsSaveDataRank_Primary;
+            saveInfo.application_id      = applicationID;
+            saveInfo.uid                 = accountID;
+            saveInfo.system_save_data_id = 0;
+            saveInfo.save_data_index     = 0;
+
+            PdmPlayStatistics playStats{};
+            user->add_data(applicationID, saveInfo, playStats);
+        }
+
+        return user->get_total_data_entries();
+    }
+
+    void prepare_all_user_save_candidates(const data::UserList &users)
+    {
+        for (data::User *user : users)
+        {
+            if (user && user->get_total_data_entries() == 0) { prepare_user_save_candidates(user); }
+        }
+    }
 } // namespace
 
 //                      ---- Construction ----
@@ -219,12 +263,19 @@ void MainMenuState::open_active_user()
     data::User *user = sm_users[m_activeUserIndex];
     if (user->get_total_data_entries() == 0)
     {
-        std::string message = stringutil::get_formatted_string("Nenhum save encontrado para %s.", user->get_nickname());
-        ui::PopMessageManager::push_message(ui::PopMessageManager::DEFAULT_TICKS, message);
-        return;
+        const size_t candidates = prepare_user_save_candidates(user);
+        if (candidates == 0)
+        {
+            std::string message = stringutil::get_formatted_string("Nenhum jogo com save por perfil encontrado para %s.",
+                                                                   user->get_nickname());
+            ui::PopMessageManager::push_message(ui::PopMessageManager::DEFAULT_TICKS, message);
+            return;
+        }
     }
 
     auto &target = sm_states[m_activeUserIndex];
+    TitleSelectCommon *titleState = static_cast<TitleSelectCommon *>(target.get());
+    titleState->refresh();
     target->reactivate();
     StateManager::push_state(target);
 }
@@ -249,16 +300,17 @@ void MainMenuState::update_navigation() noexcept
     const bool leftPressed  = input::button_pressed(HidNpadButton_AnyLeft);
     const bool rightPressed = input::button_pressed(HidNpadButton_AnyRight);
 
-    if (upPressed) { m_selectedAction = DashboardAction::ProtectAll; }
-    else if (downPressed && m_selectedAction == DashboardAction::ProtectAll) { m_selectedAction = DashboardAction::Games; }
-    else if (m_selectedAction != DashboardAction::ProtectAll && (leftPressed || rightPressed))
+    // The bottom dashboard navigation is visually horizontal, so Left/Right must
+    // always walk through Inicio -> Jogos -> Historico -> Configuracoes (and wrap).
+    if (leftPressed || rightPressed)
     {
+        constexpr int ACTION_COUNT = 4;
         int selected = static_cast<int>(m_selectedAction);
-        selected += leftPressed ? -1 : 1;
-        if (selected < static_cast<int>(DashboardAction::Games)) { selected = static_cast<int>(DashboardAction::Settings); }
-        if (selected > static_cast<int>(DashboardAction::Settings)) { selected = static_cast<int>(DashboardAction::Games); }
+        selected = (selected + (leftPressed ? -1 : 1) + ACTION_COUNT) % ACTION_COUNT;
         m_selectedAction = static_cast<DashboardAction>(selected);
     }
+    else if (upPressed) { m_selectedAction = DashboardAction::ProtectAll; }
+    else if (downPressed && m_selectedAction == DashboardAction::ProtectAll) { m_selectedAction = DashboardAction::Games; }
 }
 
 void MainMenuState::render_dashboard()
@@ -326,9 +378,12 @@ void MainMenuState::render_protection_hero()
     const size_t totalSaves = count_protectable_saves(sm_users);
     const bool driveConnected = remote::get_remote_storage() != nullptr;
     const std::string title = driveConnected ? "Proteção na nuvem pronta" : "Seus saves, sob seu controle";
-    const std::string subtitle = std::to_string(totalSaves) +
-                                 (totalSaves == 1 ? " save encontrado. " : " saves encontrados. ") +
-                                 "Crie uma cópia segura com um toque.";
+    const std::string subtitle = totalSaves == 0
+                                     ? "A lista de jogos é carregada somente quando você abre Jogos ou inicia uma proteção."
+                                     : std::to_string(totalSaves) +
+                                           (totalSaves == 1 ? " jogo com suporte a save preparado. "
+                                                            : " jogos com suporte a save preparados. ") +
+                                           "O save real é validado ao proteger.";
 
     sdl::text::render(sdl::Texture::Null, 126, 111, 30, sdl::text::NO_WRAP, COLOR_TEXT, title);
     sdl::text::render(sdl::Texture::Null, 127, 151, 17, sdl::text::NO_WRAP, COLOR_TEXT_MUTED, subtitle);
@@ -377,7 +432,7 @@ void MainMenuState::render_game_cards()
 
     data::User *activeUser = sm_users[m_activeUserIndex];
     const size_t saveCount = activeUser->get_total_data_entries();
-    const std::string countText = std::to_string(saveCount) + (saveCount == 1 ? " save" : " saves");
+    const std::string countText = saveCount == 0 ? "sob demanda" : std::to_string(saveCount) + (saveCount == 1 ? " jogo" : " jogos");
     const int countX = graphics::SCREEN_WIDTH - SCREEN_MARGIN - sdl::text::get_width(14, countText);
     sdl::text::render(sdl::Texture::Null, countX, 299, 14, sdl::text::NO_WRAP, COLOR_TEXT_MUTED, countText);
 
@@ -385,14 +440,14 @@ void MainMenuState::render_game_cards()
     {
         render_panel(SCREEN_MARGIN, cardY, graphics::SCREEN_WIDTH - (SCREEN_MARGIN * 2), cardH, 14, COLOR_PANEL, COLOR_BORDER);
         gfxutil::render_circle_fill(sdl::Texture::Null, 75, cardY + (cardH / 2), 22, COLOR_PANEL_ALT);
-        sdl::text::render(sdl::Texture::Null, 112, cardY + 29, 20, sdl::text::NO_WRAP, COLOR_TEXT, "Nenhum save neste perfil");
+        sdl::text::render(sdl::Texture::Null, 112, cardY + 29, 20, sdl::text::NO_WRAP, COLOR_TEXT, "Jogos ainda não carregados");
         sdl::text::render(sdl::Texture::Null,
                           112,
                           cardY + 60,
                           15,
                           sdl::text::NO_WRAP,
                           COLOR_TEXT_MUTED,
-                          "Use L / R para verificar outro perfil do console.");
+                          "Selecione Jogos e pressione A para preparar a lista deste perfil.");
         return;
     }
 
@@ -414,14 +469,14 @@ void MainMenuState::render_game_cards()
 
         const std::string title = fit_text(titleInfo ? titleInfo->get_title() : "Título sem identificação", 19, cardW - 122);
         sdl::text::render(sdl::Texture::Null, cardX + 101, cardY + 23, 19, sdl::text::NO_WRAP, COLOR_TEXT, title);
-        gfxutil::render_circle_fill(sdl::Texture::Null, cardX + 108, cardY + 65, 5, COLOR_SUCCESS);
+        gfxutil::render_circle_fill(sdl::Texture::Null, cardX + 108, cardY + 65, 5, COLOR_PRIMARY);
         sdl::text::render(sdl::Texture::Null,
                           cardX + 121,
                           cardY + 55,
                           15,
                           sdl::text::NO_WRAP,
                           COLOR_TEXT_MUTED,
-                          "Pronto para proteger");
+                          "Save validado ao abrir");
         sdl::text::render(sdl::Texture::Null,
                           cardX + 101,
                           cardY + 82,
@@ -499,11 +554,16 @@ void MainMenuState::render_navigation()
     sdl::text::render(sdl::Texture::Null, 805, 634, 15, sdl::text::NO_WRAP, COLOR_TEXT, "A  Abrir");
     sdl::text::render(sdl::Texture::Null, 905, 634, 15, sdl::text::NO_WRAP, COLOR_TEXT, "Y  Proteger");
     sdl::text::render(sdl::Texture::Null, 1024, 634, 15, sdl::text::NO_WRAP, COLOR_TEXT, "X  Avançado");
-    sdl::text::render(sdl::Texture::Null, 805, 660, 13, sdl::text::NO_WRAP, COLOR_TEXT_MUTED, "+  Sair   •   ↑↓ Navegar   •   L/R Perfil");
+    sdl::text::render(sdl::Texture::Null, 805, 660, 13, sdl::text::NO_WRAP, COLOR_TEXT_MUTED, "+  Sair   •   ←→ Menu   •   L/R Perfil");
 }
 
 void MainMenuState::backup_all_for_all()
 {
+    // Keep save preparation out of application startup. It is cheap and safe to build
+    // account-save candidates here because the user explicitly requested protection.
+    prepare_all_user_save_candidates(sm_users);
+    MainMenuState::refresh_view_states();
+
     remote::Storage *remote = remote::get_remote_storage();
     const bool autoUpload   = config::get_by_key(config::keys::AUTO_UPLOAD);
     const char *query       = strings::get_by_name(strings::names::MAINMENU_CONFS, 0);

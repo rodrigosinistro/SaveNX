@@ -40,6 +40,7 @@ namespace
     constexpr sdl::Color COLOR_BORDER      = {0x243A52FF};
 
     constexpr int SCREEN_MARGIN = 32;
+    constexpr size_t NACP_TITLE_MAX = 0x200;
 
     void render_panel(int x,
                       int y,
@@ -106,6 +107,14 @@ namespace
         return total;
     }
 
+    std::string_view bounded_title_view(const char *title) noexcept
+    {
+        if (!title) { return {}; }
+        size_t length{};
+        while (length < NACP_TITLE_MAX && title[length] != '\0') { ++length; }
+        return std::string_view{title, length};
+    }
+
     size_t prepare_user_save_candidates(data::User *user)
     {
         if (!user || user->get_account_save_type() != FsSaveDataType_Account) { return 0; }
@@ -126,10 +135,10 @@ namespace
             const uint64_t applicationID = titleInfo->get_application_id();
             if (applicationID == 0 || config::is_blacklisted(applicationID)) { continue; }
 
-            // SaveNX 0.2.13: copy the title while the installed-title iterator already
-            // owns a valid TitleInfo pointer. The Games screen never resolves it again.
-            const char *title = titleInfo->get_title();
-            TextTitleSelectState::cache_title_label(applicationID, title ? std::string_view{title} : std::string_view{});
+            // SaveNX 0.2.14: TitleInfo guarantees a non-null language entry, and this
+            // copy is additionally bounded to the fixed NACP title field. The Games
+            // screen never resolves TitleInfo while rendering or navigating.
+            TextTitleSelectState::cache_title_label(applicationID, bounded_title_view(titleInfo->get_title()));
 
             FsSaveDataInfo saveInfo{};
             saveInfo.save_data_space_id  = FsSaveDataSpaceId_User;

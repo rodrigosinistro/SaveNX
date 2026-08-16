@@ -4,6 +4,9 @@
 #include "data/data.hpp"
 #include "sdl.hpp"
 
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 /// @brief SaveNX text title selection state.
@@ -25,6 +28,10 @@ class TextTitleSelectState final : public TitleSelectCommon
             return newState;
         }
 
+        /// @brief Copies a title label while MainMenu already owns a safe TitleInfo pointer.
+        /// Games rendering never resolves TitleInfo again; it only reads this detached cache.
+        static void cache_title_label(uint64_t applicationID, std::string_view title);
+
         void update() override;
         void render() override;
         void refresh() override;
@@ -33,14 +40,19 @@ class TextTitleSelectState final : public TitleSelectCommon
         data::User *m_user{};
         sdl::SharedTexture m_renderTarget{};
 
-        // SaveNX owns its title-list navigation instead of relying on the inherited
-        // animated ui::Menu/TextScroll path. This keeps long lists deterministic.
         int m_selected{};
         int m_firstVisible{};
 
-        // Display order is independent from User::m_userData. Sorting the actual save
-        // vector while resolving TitleInfo caused the 0.2.10 Games screen to block.
+        // Visual ordering is independent from User::m_userData. Each value is the
+        // original source index used by backup/restore operations.
         std::vector<int> m_displayOrder{};
+
+        // Detached title strings copied during lazy candidate preparation. This keeps
+        // Games navigation completely independent from the global TitleInfo map.
+        static inline std::unordered_map<uint64_t, std::string> sm_titleLabels{};
+
+        static std::string get_cached_title(uint64_t applicationID);
+        static std::string make_sort_key(std::string_view title);
 
         void handle_navigation();
         void clamp_window() noexcept;

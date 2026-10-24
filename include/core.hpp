@@ -74,14 +74,14 @@ inline std::vector<Draw> frame(const Model& m)
     const char* nav[]={"Início","Jogos e perfis","Google Drive","Ajustes"};
     int active=m.screen==Screen::Home?0:(m.screen==Screen::Cloud?2:(m.screen==Screen::Settings?3:1));
     for(int i=0;i<4;i++){if(i==active)box(14,142+i*65,202,48,panel);text(30,151+i*65,180,21,nav[i],i==active?teal:muted);}
-    text(28,644,190,16,"Seus saves. Seu controle.",muted);text(28,679,190,15,std::string("SaveNX ")+VERSION,muted);
+    text(28,644,190,16,"Seus saves, com você.",muted);text(28,679,190,15,std::string("SaveNX ")+VERSION,muted);
     text(280,35,650,30,m.screen==Screen::Home?"Seu progresso, protegido.":m.screen==Screen::Profiles?"Escolha um perfil":m.screen==Screen::Games?"Seus jogos":m.screen==Screen::Backups?"Backups deste jogo":m.screen==Screen::Cloud?"Sua nuvem":m.screen==Screen::Settings?"Do seu jeito":m.screen==Screen::Confirm?"Restaurar este backup?":m.screen==Screen::Working?"Cuidando dos seus saves":"SaveNX");
     text(970,46,270,18,m.connected?"Google Drive conectado":"Google Drive desconectado",m.connected?teal:muted);
     if(m.screen==Screen::Home)
     {
         text(282,130,900,22,"Uma cópia no seu Switch. Outra, na sua conta Google.",muted);
         const char* title[]={"Meus jogos","Proteger todos","Google Drive","Ajustes"};
-        const char* sub[]={"Escolha um jogo para fazer backup ou restaurar.","Crie uma cópia dos saves deste console.","Autorize sua conta e envie seus backups.","Escolha como seus backups são enviados."};
+        const char* sub[]={"Backup e restauração por jogo.","Crie uma cópia dos saves deste console.","Autorize sua conta e envie seus backups.","Escolha como seus backups são enviados."};
         for(int i=0;i<4;i++){int x=280+(i%2)*482,y=196+(i/2)*163;box(x,y,456,139,i==m.selected?0x214d55:panel);
             if(i==m.selected)box(x,y,5,139,teal);text(x+24,y+23,405,27,title[i]);text(x+24,y+75,400,18,sub[i],muted);}
         text(282,557,920,20,"Backups locais: "+std::to_string(m.localCount)+"     Envios pendentes: "+std::to_string(m.pending),muted);
@@ -98,7 +98,8 @@ inline std::vector<Draw> frame(const Model& m)
             if(m.screen==Screen::Backups)s=std::string(m.backups[i].cloud?"Nuvem  ·  ":"Local  ·  ")+s;
             text(300,y+11,900,23,s);
         }
-        if(n)text(282,600,900,18,std::to_string(m.selected+1)+" de "+std::to_string(n),muted);
+        if(n)text(282,585,900,18,std::to_string(m.selected+1)+" de "+std::to_string(n),muted);
+        if(!m.message.empty())text(282,618,935,16,m.message,teal);
     }
     else if(m.screen==Screen::Cloud)
     {

@@ -84,7 +84,7 @@ class App
         if(busy)return;task=kind;cancel=false;done=false;result={};current={"Preparando...",{},{},0.03,true};auto profile=m.profile;auto game=m.game;auto target=m.target;bool upload=m.autoUpload;
         m.authCode.clear();m.authUrl.clear();show(m,kind==Task::Connect?Screen::Cloud:Screen::Working);m.message="Preparando...";
         work=[this,profile,game,target,upload,kind]{auto ctx=context();try{
-            switch(kind){case Task::Resume:cloud.resume(ctx);if(upload)flush(ctx);break;case Task::Profiles:result.profiles=nx::profiles();break;
+            switch(kind){case Task::Resume:if(ctx.report)ctx.report({"Verificando a conexão Google...",{},{},0.1,true});cloud.resume(ctx);if(upload)flush(ctx);break;case Task::Profiles:result.profiles=nx::profiles();break;
             case Task::Games:result.games=nx::games(profile,ctx);break;
             case Task::Backups:result.backups=backups(profile,game,ctx);break;
             case Task::Backup:nx::backup(profile,game,ctx,false,upload);result.message="Backup local concluído.";if(upload)flush(ctx);result.backups=backups(profile,game,ctx);break;

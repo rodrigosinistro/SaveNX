@@ -9,17 +9,17 @@ CXX := $(DEVKITA64)/bin/aarch64-none-elf-g++
 TOOLS := $(DEVKITPRO)/tools/bin
 export PATH := $(PORTLIBS)/bin:$(TOOLS):$(PATH)
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
-CPPFLAGS := -D__SWITCH__ -Iinclude -I$(LIBNX)/include -I$(PORTLIBS)/include -I$(PORTLIBS)/include/freetype2
+CPPFLAGS := -D__SWITCH__ -Iinclude -isystem $(LIBNX)/include -isystem $(PORTLIBS)/include -isystem $(PORTLIBS)/include/freetype2
 CXXFLAGS := $(ARCH) -std=c++20 -O2 -g -Wall -Wextra -Wno-misleading-indentation -ffunction-sections -fdata-sections -MMD -MP
 LDFLAGS := $(ARCH) -specs=$(LIBNX)/switch.specs -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Wl,--gc-sections,-Map,build/SaveNX.map
-LIBS = -Wl,--start-group $(shell sdl2-config --libs) $(shell curl-config --libs) -lfreetype -lharfbuzz -lminizip -ljson-c -lbz2 -lpng -lz -lnx -Wl,--end-group
+LIBS = -Wl,--start-group $(shell $(PORTLIBS)/bin/sdl2-config --libs) $(shell $(PORTLIBS)/bin/curl-config --libs) -lfreetype -lharfbuzz -lminizip -ljson-c -lbz2 -lpng -lz -lnx -Wl,--end-group
 OBJECTS := $(patsubst source/%.cpp,build/%.o,$(wildcard source/*.cpp))
 
 .PHONY: all clean
 all: SaveNX.nro
 build/%.o: source/%.cpp
 	@mkdir -p build
-	$(CXX) $(CPPFLAGS) $(shell sdl2-config --cflags) $(shell curl-config --cflags) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(shell $(PORTLIBS)/bin/sdl2-config --cflags) $(shell $(PORTLIBS)/bin/curl-config --cflags) $(CXXFLAGS) -c $< -o $@
 SaveNX.elf: $(OBJECTS)
 	$(CXX) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $@
 SaveNX.nacp: Makefile

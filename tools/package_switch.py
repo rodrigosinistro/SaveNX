@@ -2,7 +2,6 @@
 from pathlib import Path
 import hashlib
 import json
-import shutil
 import zipfile
 VERSION = '0.4.0'
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +18,8 @@ def package(nro=None, output=None):
         z.writestr('LEIA-ME.txt', instructions)
         z.writestr('LICENSE.txt', (ROOT / 'LICENSE').read_bytes())
         z.writestr('THIRD_PARTY_NOTICES.md', (ROOT / 'THIRD_PARTY_NOTICES.md').read_bytes())
+        for notice in sorted((ROOT/'licenses').glob('*.txt')):
+            z.writestr('licenses/'+notice.name, notice.read_bytes())
         z.writestr('SHA256SUMS.txt', f'{checksum}  switch/SaveNX/SaveNX.nro\n')
     with zipfile.ZipFile(output) as z:
         if z.testzip():

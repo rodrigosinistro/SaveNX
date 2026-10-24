@@ -14,7 +14,7 @@ static std::string queryName(const SaveQuery&q)
 }
 static void check(Result r,const std::string&what)
 {
-    if(R_FAILED(r))throw std::runtime_error(what+" code="+hex(r));
+    if(R_FAILED(r)){auto message=what+" code="+hex(r);log(message);throw std::runtime_error(message);}
 }
 static void readNative(const SaveQuery&q,const SaveVisitor&visit)
 {
@@ -49,9 +49,14 @@ static void readNative(const SaveQuery&q,const SaveVisitor&visit)
 static Inventory inventory(const Context&ctx)
 {
     if(ctx.report)ctx.report({"Buscando os saves do console...",{},{},0.1,true});
-    auto found=scanInventory(readNative,ctx);
+    Inventory found;
+    try{found=scanInventory(readNative,ctx);}catch(const std::exception&e){
+        auto failure=object();put(failure.get(),"version",std::string(VERSION));put(failure.get(),"complete",int64_t(0));put(failure.get(),"error",std::string(e.what()));
+        try{writeText(std::string(ROOT)+"/logs/save-discovery.json",encode(failure.get()));}catch(...){log("Could not save scan failure summary");}
+        throw;
+    }
     for(auto&e:found.errors)log("Save scan fallback: "+e);
-    auto j=object();put(j.get(),"version",std::string(VERSION));put(j.get(),"read_records",found.readRecords);put(j.get(),"game_saves",int64_t(found.saves.size()));put(j.get(),"unresolved_records",found.unresolved);put(j.get(),"successful_readers",found.successfulReaders);
+    auto j=object();put(j.get(),"complete",int64_t(1));put(j.get(),"version",std::string(VERSION));put(j.get(),"read_records",found.readRecords);put(j.get(),"game_saves",int64_t(found.saves.size()));put(j.get(),"unresolved_records",found.unresolved);put(j.get(),"successful_readers",found.successfulReaders);
     auto errors=json_object_new_array();for(auto&e:found.errors)json_object_array_add(errors,json_object_new_string(e.c_str()));json_object_object_add(j.get(),"reader_errors",errors);
     try{writeText(std::string(ROOT)+"/logs/save-discovery.json",encode(j.get()));}catch(const std::exception&e){log(e.what());}
     if(found.saves.empty()&&found.unresolved)throw std::runtime_error("O console retornou saves, mas não foi possível identificar os jogos. A consulta foi registrada.");

@@ -1,3 +1,7 @@
+# SaveNX 0.3.0
+
+The 0.3.0 continuation is based on the recovered SaveNX v0.1.0 sources described below. Original copyright and license notices are retained. Corresponding sources are available at https://github.com/rodrigosinistro/SaveNX; SOURCE.txt in the install package identifies the exact build commit.
+
 # Notices and attribution
 
 SaveNX 0.1.0 is a modified work based on the `rewrite` branch of JKSV:

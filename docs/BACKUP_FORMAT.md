@@ -22,7 +22,7 @@ Exemplo resumido do manifesto:
 {
   "schema": "savenx.backup.v1",
   "createdBy": "SaveNX",
-  "appVersion": "0.1.0",
+  "appVersion": "0.3.0",
   "createdAtUnix": 1786492800,
   "user": {
     "nickname": "Jogador",

@@ -14,6 +14,7 @@
 #include <array>
 #include <cstring>
 #include <ctime>
+#include <memory>
 
 namespace
 {
@@ -57,12 +58,12 @@ bool fs::copy_directory_to_zip(const fslib::Path &source, fs::MiniZip &dest, sys
                 task->reset(static_cast<double>(fileSize));
             }
 
-            std::array<unsigned char, SIZE_ZIP_BUFFER> buffer{};
+            auto buffer = std::make_unique<std::array<unsigned char, SIZE_ZIP_BUFFER>>();
             for (int64_t i = 0; i < fileSize;)
             {
-                const size_t requestSize = std::min<int64_t>(buffer.size(), fileSize - i);
-                const ssize_t readSize = sourceFile.read(buffer.data(), requestSize);
-                if (readSize <= 0 || !dest.write(buffer.data(), static_cast<size_t>(readSize)))
+                const size_t requestSize = std::min<int64_t>(buffer->size(), fileSize - i);
+                const ssize_t readSize = sourceFile.read(buffer->data(), requestSize);
+                if (readSize <= 0 || !dest.write(buffer->data(), static_cast<size_t>(readSize)))
                 {
                     dest.close_current_file();
                     return false;
@@ -86,7 +87,7 @@ bool fs::copy_zip_to_directory(fs::MiniUnzip &unzip,
     if (!unzip.reset()) { return false; }
     const char *statusTemplate  = strings::get_by_name(strings::names::IO_STATUSES, 2);
     const bool needCommits      = journalSize > 0;
-    std::array<unsigned char, SIZE_UNZIP_BUFFER> buffer{};
+    auto buffer = std::make_unique<std::array<unsigned char, SIZE_UNZIP_BUFFER>>();
 
     do {
         const std::string_view filename = unzip.get_filename();
@@ -142,15 +143,15 @@ bool fs::copy_zip_to_directory(fs::MiniUnzip &unzip,
                 journalCount = 0;
             }
 
-            size_t requestSize = std::min<int64_t>(buffer.size(), fileSize - i);
+            size_t requestSize = std::min<int64_t>(buffer->size(), fileSize - i);
             if (needCommits)
             {
                 requestSize = std::min<int64_t>(requestSize, journalSize - journalCount);
             }
-            const ssize_t readSize = unzip.read(buffer.data(), requestSize);
+            const ssize_t readSize = unzip.read(buffer->data(), requestSize);
             if (readSize <= 0) { return false; }
 
-            const ssize_t writeSize = destFile.write(buffer.data(), static_cast<size_t>(readSize));
+            const ssize_t writeSize = destFile.write(buffer->data(), static_cast<size_t>(readSize));
             if (writeSize != readSize) { return false; }
 
             i += readSize;
@@ -184,7 +185,7 @@ bool fs::validate_zip_archive(fs::MiniUnzip &unzip)
 {
     if (!unzip.is_open() || !unzip.reset()) { return false; }
 
-    std::array<unsigned char, SIZE_ZIP_BUFFER> buffer{};
+    auto buffer = std::make_unique<std::array<unsigned char, SIZE_ZIP_BUFFER>>();
     bool valid = true;
     bool hasSaveEntry{};
     do {
@@ -200,8 +201,8 @@ bool fs::validate_zip_archive(fs::MiniUnzip &unzip)
         const uint64_t expectedSize = unzip.get_uncompressed_size();
         while (totalRead < expectedSize)
         {
-            const size_t requestSize = std::min<uint64_t>(buffer.size(), expectedSize - totalRead);
-            const ssize_t readSize = unzip.read(buffer.data(), requestSize);
+            const size_t requestSize = std::min<uint64_t>(buffer->size(), expectedSize - totalRead);
+            const ssize_t readSize = unzip.read(buffer->data(), requestSize);
             if (readSize <= 0)
             {
                 valid = false;

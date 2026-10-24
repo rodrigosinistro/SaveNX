@@ -268,7 +268,7 @@ void data::User::load_account(AccountProfile &profile, AccountProfileBase &profi
 {
     static constexpr size_t NICKNAME_BUFFER = 0x20;
 
-    const auto clean = savenx::plain_text(std::string_view(profileBase.nickname, strnlen(profileBase.nickname, NICKNAME_BUFFER)), NICKNAME_BUFFER - 1);
+    const auto clean = savenx::plain_text(std::string_view(profileBase.nickname, savenx::bounded_length(profileBase.nickname, NICKNAME_BUFFER)), NICKNAME_BUFFER - 1);
     std::snprintf(m_nickname, NICKNAME_BUFFER, "%s", clean.c_str());
 
     const bool sanitizeError = !stringutil::sanitize_string_for_path(m_nickname, m_pathSafeNickname, NICKNAME_BUFFER);

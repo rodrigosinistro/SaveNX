@@ -258,6 +258,7 @@ bool remote::GoogleDrive::upload_attempt(const fslib::Path &source, std::string_
     curl::set_option(m_curl, CURLOPT_READFUNCTION, curl::read_data_from_file);
     curl::set_option(m_curl, CURLOPT_READDATA, &upload);
     curl::set_option(m_curl, CURLOPT_INFILESIZE_LARGE, static_cast<curl_off_t>(size));
+    curl::set_option(m_curl, CURLOPT_TIMEOUT, 0L);
     curl::set_option(m_curl, CURLOPT_WRITEFUNCTION, curl::write_response_string);
     curl::set_option(m_curl, CURLOPT_WRITEDATA, &response);
     if (!curl::perform(m_curl)) { m_lastTransferCode = 0; return false; }
@@ -362,7 +363,8 @@ bool remote::GoogleDrive::download_file(const remote::Item *file, const fslib::P
     curl::set_option(m_curl, CURLOPT_WRITEFUNCTION, curl::write_download_to_file);
     curl::set_option(m_curl, CURLOPT_WRITEDATA, download.get());
 
-    if (!curl::perform(m_curl)) { return false; }
+    curl::set_option(m_curl, CURLOPT_TIMEOUT, 0L);
+    if (!curl::perform(m_curl) || curl::get_response_code(m_curl) != 200) { return false; }
     const bool flushSuccess = destFile.flush();
     const bool sizeMatches  = itemSize < 0 || destFile.tell() == itemSize;
     if (!flushSuccess || !sizeMatches)
@@ -564,9 +566,8 @@ bool remote::GoogleDrive::poll_sign_in(std::string_view code)
 
     if (!save_session()) { m_pollState = PollState::Error; return false; }
 
-    if (!GoogleDrive::get_root_id()) { return false; }
-
-    if (!request_listing()) { m_pollState = PollState::Error; return false; }
+    if (!GoogleDrive::get_root_id() || !request_listing())
+    { m_pollState = PollState::Error; m_lastError = "Autorizado, mas não foi possível listar o Drive"; return false; }
     m_isInitialized = true;
     m_pollState = PollState::Complete;
 
@@ -745,6 +746,8 @@ bool remote::GoogleDrive::error_occurred(json::Object &json, bool log) noexcept
 {
     json_object *error = json::get_object(json, "error");
     if (!error) { return false; }
+    const char *errorCode = json_object_get_string(error);
+    m_lastError = errorCode ? errorCode : "google_api_error";
 
     // Google has so many different error response structures. I'm covering two here. Technically,
     // I could grab the code too from the second response, that makes this even more of a headache.

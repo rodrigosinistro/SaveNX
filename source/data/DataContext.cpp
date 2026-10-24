@@ -6,6 +6,7 @@
 #include "logging/logger.hpp"
 #include "strings/strings.hpp"
 #include "stringutil.hpp"
+#include <memory>
 
 namespace
 {
@@ -173,8 +174,7 @@ void data::DataContext::import_svi_files(sys::Task *task)
 
     task->set_status(statusLoadingSvi);
 
-    // auto controlData = std::make_unique<NsApplicationControlData>();
-    NsApplicationControlData controlData{};
+    auto controlData = std::make_unique<NsApplicationControlData>();
     for (const fslib::DirectoryEntry &entry : sviDir)
     {
         const fslib::Path target{sviPath / entry};
@@ -189,11 +189,11 @@ void data::DataContext::import_svi_files(sys::Task *task)
         const bool exists    = DataContext::title_is_loaded(applicationID);
         if (!magicRead || magic != fs::SAVE_META_MAGIC || !idRead || exists) { continue; }
 
-        const bool dataRead = sviFile.read(&controlData, SIZE_CTRL_DATA) == SIZE_CTRL_DATA;
+        const bool dataRead = sviFile.read(controlData.get(), SIZE_CTRL_DATA) == SIZE_CTRL_DATA;
         if (!dataRead) { continue; }
 
         std::scoped_lock multiGuard{m_iconQueueMutex, m_titleMutex};
-        m_titleInfo.try_emplace(applicationID, applicationID, controlData);
+        m_titleInfo.try_emplace(applicationID, applicationID, *controlData);
         m_iconQueue.push_back(&m_titleInfo.at(applicationID));
     }
 }
@@ -216,9 +216,9 @@ bool data::DataContext::read_cache(sys::Task *task)
     const char *statusLoadingCache = strings::get_by_name(strings::names::DATA_LOADING_STATUS, 4);
     task->set_status(statusLoadingCache);
 
-    NsApplicationControlData controlData{};
+    auto controlData = std::make_unique<NsApplicationControlData>();
     do {
-        const bool dataRead = cacheZip.read(&controlData, SIZE_CTRL_DATA) == SIZE_CTRL_DATA;
+        const bool dataRead = cacheZip.read(controlData.get(), SIZE_CTRL_DATA) == SIZE_CTRL_DATA;
         if (!dataRead) { continue; }
 
         std::string_view filename{cacheZip.get_filename()};
@@ -230,7 +230,7 @@ bool data::DataContext::read_cache(sys::Task *task)
 
         std::scoped_lock multiGuard{m_iconQueueMutex, m_titleMutex};
 
-        m_titleInfo.try_emplace(applicationID, applicationID, controlData);
+        m_titleInfo.try_emplace(applicationID, applicationID, *controlData);
         m_iconQueue.push_back(&m_titleInfo.at(applicationID));
     } while (cacheZip.next_file());
     m_cacheIsValid = true;

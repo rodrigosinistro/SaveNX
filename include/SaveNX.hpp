@@ -32,6 +32,10 @@ class SaveNX
     private:
         /// @brief Whether or not initialization was successful and SaveNX is still running.
         static inline std::atomic_bool sm_isRunning{};
+        bool m_poolStarted{};
+        bool m_configStarted{};
+        bool m_curlStarted{};
+        bool m_sdlStarted{};
 
         /// @brief Whether or not to print the translation credits.
         bool m_showTranslationInfo{};

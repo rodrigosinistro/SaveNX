@@ -15,7 +15,7 @@ namespace
     constexpr size_t COUNT_THREADS = 2;
 
     /// @brief Size of the stack for the threads.
-    constexpr size_t SIZE_THREAD_STACK = 0x40000;
+    constexpr size_t SIZE_THREAD_STACK = 0x100000;
 
     /// @brief Another time/hand saver.
     using QueuePair = std::pair<sys::threadpool::JobFunction, sys::threadpool::JobData>;

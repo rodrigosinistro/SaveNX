@@ -43,7 +43,7 @@ jobs:
           SAVENX_GOOGLE_CLIENT_SECRET: ${{ secrets.SAVENX_GOOGLE_CLIENT_SECRET }}
         run: python3 tools/generate_oauth_header.py
       - name: Compile Switch application
-        run: make -j2
+        run: make -k -j2
       - name: Package installation
         run: python3 tools/package_switch.py
       - uses: actions/upload-artifact@v4

@@ -3,6 +3,7 @@
 #include "remote/Storage.hpp"
 
 #include <ctime>
+#include <cstdint>
 
 namespace remote
 {

@@ -82,13 +82,16 @@ SaveNX::SaveNX()
 
     // SDL2
     ABORT_ON_FAILURE(SaveNX::initialize_sdl());
+    m_sdlStarted = true;
 
     // Curl.
     ABORT_ON_FAILURE(curl::initialize());
+    m_curlStarted = true;
 
     // Config and input.
     input::initialize();
     config::initialize();
+    m_configStarted = true;
 
     // These are the strings used in the UI.
     ABORT_ON_FAILURE(strings::initialize()); // This is fatal now.
@@ -97,7 +100,8 @@ SaveNX::SaveNX()
 
     // This needs the config init'd or read to work.
     SaveNX::create_directories();
-    sys::threadpool::initialize(); // This is the thread pool so SaveNX isn't constantly creating and destroying threads.
+    sys::threadpool::initialize();
+    m_poolStarted = true;
 
     // Clean boot performs no save enumeration and no Google sign-in.
     StateManager::push_state(std::make_shared<HomeState>());
@@ -116,12 +120,11 @@ SaveNX::SaveNX()
 
 SaveNX::~SaveNX()
 {
-    sys::threadpool::exit();
-    config::save();
-    curl::exit();
+    if (m_poolStarted) { sys::threadpool::exit(); }
+    if (m_configStarted) { config::save(); }
+    if (m_curlStarted) { curl::exit(); }
+    if (m_sdlStarted) { sdl::text::SystemFont::exit(); sdl::exit(); }
     SaveNX::exit_services();
-    sdl::text::SystemFont::exit();
-    sdl::exit();
 
     appletSetCpuBoostMode(ApmCpuBoostMode_Normal);
     appletUnlockExit();

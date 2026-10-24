@@ -9,6 +9,7 @@
 - Fila de uploads persistente com snapshots independentes, reenvio e confirmação por ID/tamanho.
 - Recupera uploads com resposta perdida por propriedade privada do Drive e mantém backups locais.
 - Corrige fallback de dados de título e caracteres de controle/marcadores de cor em nomes.
+- Move buffers grandes de ZIP e NACP para o heap e reforça limpeza após inicialização incompleta.
 - Adiciona testes host e workflow de compilação e empacotamento Switch.
 
 Pacote v0.2.17 preservado como referência de comportamento; seus fontes não estavam disponíveis no pacote instalável.

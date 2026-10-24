@@ -4,6 +4,13 @@
 
 namespace savenx
 {
+    inline std::size_t bounded_length(const char *s, std::size_t capacity) noexcept
+    {
+        std::size_t n{};
+        while (n < capacity && s[n]) { ++n; }
+        return n;
+    }
+
     inline std::string plain_text(std::string_view s, std::size_t maxBytes = 511)
     {
         std::string out;

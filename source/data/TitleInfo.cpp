@@ -184,7 +184,7 @@ void data::TitleInfo::get_create_path_safe_title() noexcept
 {
     if (m_entry)
     {
-        const auto clean = savenx::plain_text(std::string_view(m_entry->name, strnlen(m_entry->name, sizeof(m_entry->name))), sizeof(m_entry->name) - 1);
+        const auto clean = savenx::plain_text(std::string_view(m_entry->name, savenx::bounded_length(m_entry->name, sizeof(m_entry->name))), sizeof(m_entry->name) - 1);
         std::snprintf(m_entry->name, sizeof(m_entry->name), "%s", clean.c_str());
         m_entry->author[sizeof(m_entry->author) - 1] = 0;
     }

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Package an SD layout from the newly compiled NRO only."""
 import hashlib
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -16,6 +17,10 @@ dist.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(nro, dist / "SaveNX.nro")
 (dist / "SaveNX.nro.sha256").write_text(hashlib.sha256(data).hexdigest() + "  SaveNX.nro\n")
 shutil.copyfile(root / "README.md", dist / "README.md")
+for name in ("LICENSE", "NOTICE.md"):
+    shutil.copyfile(root / name, dist / name)
+commit = os.environ.get("GITHUB_SHA", "codex/savenx-v0.3.0")
+(dist / "SOURCE.txt").write_text(f"SaveNX {version}\nhttps://github.com/rodrigosinistro/SaveNX/tree/{commit}\n")
 shutil.copytree(root / "docs", dist / "docs", dirs_exist_ok=True)
 (dist / "config").mkdir(exist_ok=True)
 shutil.copyfile(root / "config/google-drive.example.json", dist / "config/google-drive.example.json")

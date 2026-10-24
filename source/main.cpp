@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "navigation.hpp"
 #include "platform.hpp"
 #include "cloud.hpp"
 #include "json_util.hpp"
@@ -68,7 +69,7 @@ struct ResultData { std::vector<Profile>profiles;std::vector<Game>games;std::vec
 class App
 {
     Model m;Cloud cloud;Thread thread{};bool busy{},quit{};std::atomic_bool cancel{},done{};std::mutex progressLock;Progress current;
-    std::function<void()> work;ResultData result;Task task{};Screen messageReturn{Screen::Home};uint64_t hold{};
+    std::function<void()> work;ResultData result;Task task{};Screen messageReturn{Screen::Home};uint64_t hold{};NavigationRepeat navigation;
     static void threadEntry(void*p){auto&a=*static_cast<App*>(p);a.work();a.done.store(true,std::memory_order_release);}
     Context context(){return {&cancel,[this](const Progress&p){std::lock_guard g(progressLock);current=p;}};}
     std::vector<Backup> backups(const Profile&p,const Game&g,const Context&ctx)
@@ -84,11 +85,11 @@ class App
         if(busy)return;task=kind;cancel=false;done=false;result={};current={"Preparando...",{},{},0.03,true};auto profile=m.profile;auto game=m.game;auto target=m.target;bool upload=m.autoUpload;
         m.authCode.clear();m.authUrl.clear();show(m,kind==Task::Connect?Screen::Cloud:Screen::Working);m.message="Preparando...";
         work=[this,profile,game,target,upload,kind]{auto ctx=context();try{
-            switch(kind){case Task::Resume:if(ctx.report)ctx.report({"Verificando a conexão Google...",{},{},0.1,true});cloud.resume(ctx);if(upload)flush(ctx);break;case Task::Profiles:result.profiles=nx::profiles();break;
-            case Task::Games:result.games=nx::games(profile,ctx);break;
+            switch(kind){case Task::Resume:if(ctx.report)ctx.report({"Verificando a conexão Google...",{},{},0.1,true});cloud.resume(ctx);if(upload)flush(ctx);break;case Task::Profiles:result.profiles=nx::profiles(ctx);break;
+            case Task::Games:result.games=nx::games(profile,ctx);if(result.games.empty())result.message="X: buscar novamente. A consulta foi registrada para diagnóstico.";break;
             case Task::Backups:result.backups=backups(profile,game,ctx);break;
             case Task::Backup:nx::backup(profile,game,ctx,false,upload);result.message="Backup local concluído.";if(upload)flush(ctx);result.backups=backups(profile,game,ctx);break;
-            case Task::All:{int total=0;for(auto&p:nx::profiles())for(auto&g:nx::games(p,ctx)){ctx.check();nx::backup(p,g,ctx,false,upload);total++;}result.message=std::to_string(total)+" backups locais concluídos.";if(upload)flush(ctx);break;}
+            case Task::All:{int total=0;for(auto&p:nx::profiles(ctx))if(!p.all)for(auto&g:nx::games(p,ctx)){ctx.check();nx::backup(p,g,ctx,false,upload);total++;}result.message=std::to_string(total)+" backups locais concluídos.";if(upload)flush(ctx);break;}
             case Task::Restore:{auto b=target.cloud?cloud.download(target,ctx):target;nx::restore(profile,game,b,ctx);result.message="Save restaurado. A cópia de segurança foi preservada.";result.backups=localBackups(profile,game);break;}
             case Task::Connect:cloud.connect(ctx);result.message="Google Drive conectado.";flush(ctx);break;
             case Task::Flush:cloud.flush(ctx);result.message="Envios pendentes concluídos.";break;}
@@ -113,7 +114,7 @@ class App
         case Screen::Games:if(!m.games.empty()){m.game=m.games.at(m.selected);start(Task::Backups);}break;
         case Screen::Backups:if(!m.backups.empty()){m.target=m.backups.at(m.selected);show(m,Screen::Confirm);}break;
         case Screen::Cloud:start(m.selected?Task::Flush:Task::Connect);break;
-        case Screen::Settings:if(m.selected==0){m.autoUpload=!m.autoUpload;auto j=object();put(j.get(),"auto_upload",int64_t(m.autoUpload));writeText(std::string(ROOT)+"/config/settings-v2.json",encode(j.get()));}else{m.message="SaveNX 0.4.0 · Aplicativo original para proteger seus saves.";messageReturn=Screen::Settings;show(m,Screen::Message);}break;
+        case Screen::Settings:if(m.selected==0){m.autoUpload=!m.autoUpload;auto j=object();put(j.get(),"auto_upload",int64_t(m.autoUpload));writeText(std::string(ROOT)+"/config/settings-v2.json",encode(j.get()));}else{m.message=std::string("SaveNX ")+VERSION+" · Aplicativo original para proteger seus saves.";messageReturn=Screen::Settings;show(m,Screen::Message);}break;
         case Screen::Confirm:if(m.selected==0)show(m,Screen::Backups);break;
         case Screen::Message:show(m,messageReturn);break;default:break;}
     }
@@ -125,15 +126,17 @@ public:
     void update(PadState&pad)
     {
         poll();auto down=padGetButtonsDown(&pad),held=padGetButtons(&pad);
-        if(busy){if(m.canCancel&&(down&HidNpadButton_B))cancel=true;return;}
+        if(busy){navigation.reset();if(m.canCancel&&(down&HidNpadButton_B))cancel=true;return;}
         try{
             if(down&HidNpadButton_Plus){quit=true;return;}
-            if(down&(HidNpadButton_Up|HidNpadButton_StickLUp))move(m,m.screen==Screen::Home?-2:-1);
-            if(down&(HidNpadButton_Down|HidNpadButton_StickLDown))move(m,m.screen==Screen::Home?2:1);
-            if(m.screen==Screen::Home||m.screen==Screen::Cloud||m.screen==Screen::Confirm){if(down&HidNpadButton_Right)move(m,1);if(down&HidNpadButton_Left)move(m,-1);}
+            Direction digital=Direction::None;
+            if(held&HidNpadButton_Up)digital=Direction::Up;else if(held&HidNpadButton_Down)digital=Direction::Down;
+            else if(held&HidNpadButton_Left)digital=Direction::Left;else if(held&HidNpadButton_Right)digital=Direction::Right;
+            auto l=padGetStickPos(&pad,0),r=padGetStickPos(&pad,1);
+            navigate(m,navigation.update(navigationDirection(digital,{l.x,l.y},{r.x,r.y}),SDL_GetTicks64()));
             if(down&HidNpadButton_B){switch(m.screen){case Screen::Profiles:case Screen::Cloud:case Screen::Settings:show(m,Screen::Home);break;case Screen::Games:show(m,Screen::Profiles);break;case Screen::Backups:show(m,Screen::Games);break;case Screen::Confirm:show(m,Screen::Backups);break;case Screen::Message:show(m,messageReturn);break;default:break;}return;}
             if(down&HidNpadButton_A)accept();
-            if(down&HidNpadButton_X){if(m.screen==Screen::Games&&!m.games.empty()){m.game=m.games.at(m.selected);start(Task::Backup);}else if(m.screen==Screen::Backups)start(Task::Backup);}
+            if(down&HidNpadButton_X){if(m.screen==Screen::Profiles)start(Task::Profiles);else if(m.screen==Screen::Games&&m.games.empty())start(Task::Games);else if(m.screen==Screen::Games&&!m.games.empty()){m.game=m.games.at(m.selected);start(Task::Backup);}else if(m.screen==Screen::Backups)start(Task::Backup);}
             if(m.screen==Screen::Confirm&&m.selected==1&&(held&HidNpadButton_A)){auto now=armGetSystemTick();if(!hold)hold=now;if(now-hold>armGetSystemTickFreq()*3/2){hold=0;start(Task::Restore);}}else hold=0;
         }catch(const std::exception&e){m.message=e.what();messageReturn=Screen::Home;show(m,Screen::Message);}
     }

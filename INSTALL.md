@@ -1,11 +1,11 @@
-SaveNX 0.4.0 — instalação
+SaveNX 0.4.1 — instalação
 
 1. Feche o jogo e desligue o Switch antes de remover o cartão SD.
 2. Extraia este ZIP. Copie a pasta switch para a raiz do SD, aceitando substituir somente o SaveNX.nro.
 3. Mantenha suas pastas de backups e configurações anteriores. Não é necessário apagá-las.
 4. Inicie o Homebrew Menu com memória completa (title override, mantendo R ao abrir um jogo) e abra SaveNX.
 
-A versão 0.4.0 é um aplicativo original, com uma interface nova. Os backups desta versão ficam em /switch/SaveNX/backups-v2. Os backups antigos permanecem preservados, mas não são restaurados automaticamente pela nova versão.
+A versão 0.4.1 remove o menu lateral, amplia os quadros e permite navegar com ambos os manches nas quatro direções. A busca de saves foi ampliada e mostra contagens por perfil e a opção Todos os saves. Os backups desta versão ficam em /switch/SaveNX/backups-v2. Os backups antigos permanecem preservados, mas não são restaurados automaticamente pela nova versão.
 
 Primeiro backup:
 - Meus jogos → escolha seu perfil → escolha o jogo.
@@ -16,10 +16,14 @@ Primeiro backup:
 Não é necessário informar ID OAuth nem senha Google no Switch. O cadastro técnico do aplicativo deve vir preparado no pacote. Se o Google recusar a autorização, mantenha o backup local e informe a mensagem exibida.
 
 Controles:
-Direcional: navegar. A: escolher. B: voltar ou cancelar uma operação que permita cancelamento. +: sair.
-X nos jogos ou backups: criar backup.
+Direcional ou qualquer manche: navegar. A: escolher. B: voltar ou cancelar uma operação que permita cancelamento. +: sair.
+X nos jogos ou backups: criar backup. X na seleção de perfis ou em uma lista de jogos vazia: atualizar a busca.
 Para restaurar, escolha um backup, selecione Restaurar e segure A por 1,5 segundo. O app verifica o arquivo e salva o estado atual antes de gravar. Durante a gravação, aguarde e mantenha o console ligado.
 
 O app trabalha com saves já existentes de jogos/perfis do mesmo console. Não cria perfis ou saves de jogos ainda não iniciados. Os backups na nuvem ficam no seu Google Drive pessoal em SaveNX/Backups-v2.
+
+A conexão Google validada na versão 0.4.0 foi mantida. Não apague a pasta config: ela guarda sua autorização. Os backups da versão 0.4.0 continuam compatíveis.
+
+Se ainda não aparecerem saves, selecione Todos os saves e atualize a lista com X na tela de perfis. O app registra a consulta em /switch/SaveNX/logs/save-discovery.json e /switch/SaveNX/logs/savenx.log. Esses arquivos não contêm o token Google.
 
 Esta versão deve ser validada no seu Switch. O pacote foi compilado para libnx e inclui o certificado necessário à conexão HTTPS; não depende de uma instalação anterior do JKSV. A autorização Google e o comportamento no hardware exigem teste no console real.

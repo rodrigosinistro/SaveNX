@@ -26,7 +26,7 @@ Response request(const std::string&method,const std::string&url,const std::vecto
     for(auto&s:headers)list=curl_slist_append(list,s.c_str());
     curl_easy_setopt(c,CURLOPT_URL,url.c_str());curl_easy_setopt(c,CURLOPT_HTTPHEADER,list);curl_easy_setopt(c,CURLOPT_SSL_VERIFYPEER,1L);curl_easy_setopt(c,CURLOPT_SSL_VERIFYHOST,2L);
     curl_easy_setopt(c,CURLOPT_CAINFO,"romfs:/certs/cacert.pem");curl_easy_setopt(c,CURLOPT_CONNECTTIMEOUT,15L);curl_easy_setopt(c,CURLOPT_LOW_SPEED_LIMIT,1L);curl_easy_setopt(c,CURLOPT_LOW_SPEED_TIME,30L);
-    curl_easy_setopt(c,CURLOPT_TIMEOUT,(upload.empty()&&download.empty())?60L:0L);curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);curl_easy_setopt(c,CURLOPT_USERAGENT,"SaveNX/0.4.0");
+    curl_easy_setopt(c,CURLOPT_TIMEOUT,(upload.empty()&&download.empty())?60L:0L);curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);curl_easy_setopt(c,CURLOPT_USERAGENT,"SaveNX/0.4.1");
     curl_easy_setopt(c,CURLOPT_PROTOCOLS,long(CURLPROTO_HTTPS));curl_easy_setopt(c,CURLOPT_HEADERFUNCTION,header);curl_easy_setopt(c,CURLOPT_HEADERDATA,&r.headers);
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,receive);curl_easy_setopt(c,CURLOPT_WRITEDATA,&r.body);curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);curl_easy_setopt(c,CURLOPT_XFERINFOFUNCTION,progress);curl_easy_setopt(c,CURLOPT_XFERINFODATA,&ctx);
     if(method=="POST"){curl_easy_setopt(c,CURLOPT_POST,1L);curl_easy_setopt(c,CURLOPT_POSTFIELDS,body.c_str());curl_easy_setopt(c,CURLOPT_POSTFIELDSIZE,body.size());}
@@ -105,9 +105,9 @@ int Cloud::flush(const Context&ctx)
         if(completed){acknowledge(job);sent++;}}
     return sent;
 }
-std::vector<Backup> Cloud::list(const Profile&p,const Game&g,const Context&ctx)
+std::vector<Backup> Cloud::list(const Profile&,const Game&g,const Context&ctx)
 {
-    std::vector<Backup> out;if(!linked)return out;auto parent=targetFolder(p.key,"TITLE_"+hex(g.title),slot(g),ctx,false);if(parent.empty())return out;std::string next;
+    std::vector<Backup> out;if(!linked)return out;auto parent=targetFolder(ownerKey(g),"TITLE_"+hex(g.title),slot(g),ctx,false);if(parent.empty())return out;std::string next;
     do{renew(ctx);auto url=query("trashed=false and '"+quote(parent)+"' in parents and mimeType='application/zip'","nextPageToken,files(id,name,size)");if(!next.empty())url+="&pageToken="+urlEncode(next);
         auto r=request("GET",url,{"Authorization: Bearer "+token},{},ctx);require(r);auto j=parse(r.body);auto files=field(j.get(),"files");if(files)for(size_t i=0;i<json_object_array_length(files);i++){auto f=json_object_array_get_idx(files,i);out.push_back({str(f,"name"),{},str(f,"id"),uint64_t(num(f,"size")),true});}next=str(j.get(),"nextPageToken");}while(!next.empty());return out;
 }

@@ -10,11 +10,11 @@
 
 namespace nx
 {
-inline constexpr const char *VERSION = "0.4.0";
+inline constexpr const char *VERSION = "0.4.1";
 inline constexpr const char *ROOT = "sdmc:/switch/SaveNX";
 enum class Screen { Home, Profiles, Games, Backups, Cloud, Settings, Confirm, Working, Message };
-struct Profile { std::array<uint64_t,2> uid{}; std::string name,key; bool shared{}; };
-struct Game { uint64_t title{},saveId{}; std::array<uint64_t,2> uid{}; int type{},rank{},index{}; std::string name; };
+struct Profile { std::array<uint64_t,2> uid{}; std::string name,key; bool shared{},all{}; int saves{}; };
+struct Game { uint64_t title{},saveId{}; std::array<uint64_t,2> uid{}; int type{},rank{},index{}; std::string name; int space{1}; std::string owner{}; };
 struct Backup { std::string name,path,id; uint64_t size{}; bool cloud{}; };
 struct Model
 {
@@ -26,7 +26,9 @@ struct Model
 };
 inline std::string hex(uint64_t n) { std::ostringstream s; s<<std::uppercase<<std::hex<<std::setfill('0')<<std::setw(16)<<n; return s.str(); }
 inline std::string uid(const std::array<uint64_t,2>& u) { return hex(u[1])+hex(u[0]); }
-inline std::string slot(const Game& g) { return "TYPE_"+std::to_string(g.type)+"_RANK_"+std::to_string(g.rank)+"_INDEX_"+std::to_string(g.index); }
+inline std::string ownerKey(const Game&g) { return g.type==3?"DEVICE":"USER_"+uid(g.uid); }
+inline std::string slot(const Game& g) { return "TYPE_"+std::to_string(g.type)+"_RANK_"+std::to_string(g.rank)+"_INDEX_"+std::to_string(g.index)+(g.space==1?"":"_SPACE_"+std::to_string(g.space)); }
+inline bool owns(const Profile&p,const Game&g) { return p.all||(p.shared?g.type==3:(g.type==1&&p.uid==g.uid)); }
 inline bool relative(std::string_view p)
 {
     if(p.empty()||p.front()=='/'||p.find('\\')!=p.npos||p.find(':')!=p.npos||p.find('\0')!=p.npos||p.find("//")!=p.npos)return false;
@@ -54,7 +56,7 @@ inline bool confirmedUpload(long http,std::string_view id,uint64_t reported,uint
     return (http==200||http==201)&&!id.empty()&&expected>0&&reported==expected;
 }
 inline bool archiveEntry(std::string_view p) { return p==".savenx/manifest.json" || (p.starts_with("save/")&&(p=="save/"||relative(p.substr(5)))); }
-inline bool sameSlot(const Game& a,const Game& b) { return a.title==b.title&&a.uid==b.uid&&a.type==b.type&&a.rank==b.rank&&a.index==b.index; }
+inline bool sameSlot(const Game& a,const Game& b) { return a.title==b.title&&a.uid==b.uid&&a.type==b.type&&a.rank==b.rank&&a.index==b.index&&a.space==b.space; }
 inline int count(const Model& m)
 {
     switch(m.screen) { case Screen::Home:return 4; case Screen::Profiles:return m.profiles.size(); case Screen::Games:return m.games.size();
@@ -68,69 +70,95 @@ inline std::vector<Draw> frame(const Model& m)
     std::vector<Draw> d;
     auto box=[&](int x,int y,int w,int h,uint32_t c){d.push_back({false,x,y,w,h,0,c,{}});};
     auto text=[&](int x,int y,int w,int size,std::string s,uint32_t c=0xe7edf7){d.push_back({true,x,y,w,size+12,size,c,std::move(s)});};
-    constexpr uint32_t bg=0x101827,panel=0x19263b,muted=0x9aaac1,teal=0x37dec0;
-    box(0,0,1280,720,bg); box(0,0,230,720,0x0b1220);box(252,99,1000,1,0x293950);
-    box(28,32,42,42,teal);text(38,37,28,28,"S",0x0b1220);text(82,41,140,27,"SaveNX");
-    const char* nav[]={"Início","Jogos e perfis","Google Drive","Ajustes"};
-    int active=m.screen==Screen::Home?0:(m.screen==Screen::Cloud?2:(m.screen==Screen::Settings?3:1));
-    for(int i=0;i<4;i++){if(i==active)box(14,142+i*65,202,48,panel);text(30,151+i*65,180,21,nav[i],i==active?teal:muted);}
-    text(28,644,190,16,"Seus saves, com você.",muted);text(28,679,190,15,std::string("SaveNX ")+VERSION,muted);
-    text(280,35,650,30,m.screen==Screen::Home?"Seu progresso, protegido.":m.screen==Screen::Profiles?"Escolha um perfil":m.screen==Screen::Games?"Seus jogos":m.screen==Screen::Backups?"Backups deste jogo":m.screen==Screen::Cloud?"Sua nuvem":m.screen==Screen::Settings?"Do seu jeito":m.screen==Screen::Confirm?"Restaurar este backup?":m.screen==Screen::Working?"Cuidando dos seus saves":"SaveNX");
-    text(970,46,270,18,m.connected?"Google Drive conectado":"Google Drive desconectado",m.connected?teal:muted);
+    constexpr uint32_t bg=0x101827,panel=0x19263b,muted=0x9aaac1,teal=0x37dec0,chosen=0x214d55;
+    // Every frame is a complete scene. There is no decorative or inaccessible sidebar.
+    box(0,0,1280,720,bg);box(48,26,44,44,teal);text(59,32,28,28,"S",0x0b1220);
+    text(108,28,300,28,"SaveNX");text(110,67,350,15,std::string("Seus saves, com você.  ·  ")+VERSION,muted);
+    text(936,45,296,18,m.connected?"Google Drive conectado":"Google Drive desconectado",m.connected?teal:muted);
+    box(48,102,1184,1,0x293950);
+    text(48,124,1184,32,m.screen==Screen::Home?"Seu progresso, protegido.":m.screen==Screen::Profiles?"Escolha seus saves":m.screen==Screen::Games?"Seus jogos":m.screen==Screen::Backups?"Backups deste jogo":m.screen==Screen::Cloud?"Sua nuvem":m.screen==Screen::Settings?"Do seu jeito":m.screen==Screen::Confirm?"Restaurar este backup?":m.screen==Screen::Working?"Cuidando dos seus saves":"SaveNX");
     if(m.screen==Screen::Home)
     {
-        text(282,130,900,22,"Uma cópia no seu Switch. Outra, na sua conta Google.",muted);
+        text(50,177,1180,21,"Uma cópia no seu Switch. Outra, na sua conta Google.",muted);
         const char* title[]={"Meus jogos","Proteger todos","Google Drive","Ajustes"};
-        const char* sub[]={"Backup e restauração por jogo.","Crie uma cópia dos saves deste console.","Autorize sua conta e envie seus backups.","Escolha como seus backups são enviados."};
-        for(int i=0;i<4;i++){int x=280+(i%2)*482,y=196+(i/2)*163;box(x,y,456,139,i==m.selected?0x214d55:panel);
-            if(i==m.selected)box(x,y,5,139,teal);text(x+24,y+23,405,27,title[i]);text(x+24,y+75,400,18,sub[i],muted);}
-        text(282,557,920,20,"Backups locais: "+std::to_string(m.localCount)+"     Envios pendentes: "+std::to_string(m.pending),muted);
-    }
-    else if(m.screen==Screen::Profiles||m.screen==Screen::Games||m.screen==Screen::Backups)
-    {
-        text(282,124,920,20,m.screen==Screen::Profiles?"Cada perfil mantém seus próprios backups.":m.screen==Screen::Games?m.profile.name:m.game.name,muted);
-        int n=count(m),first=(m.selected/6)*6;
-        if(n==0)text(300,235,880,25,m.screen==Screen::Backups?"Nenhum backup encontrado para este jogo.":"Nenhum save encontrado.");
-        for(int i=first;i<n&&i<first+6;i++)
-        {
-            int y=180+(i-first)*66;box(280,y,940,55,i==m.selected?0x214d55:panel);
-            std::string s=m.screen==Screen::Profiles?m.profiles[i].name:m.screen==Screen::Games?m.games[i].name:m.backups[i].name;
-            if(m.screen==Screen::Backups)s=std::string(m.backups[i].cloud?"Nuvem  ·  ":"Local  ·  ")+s;
-            text(300,y+11,900,23,s);
+        const char* sub[]={"Escolha um save para copiar ou restaurar.","Crie uma cópia dos saves deste console.","Conecte sua conta e envie seus backups.","Escolha como seus backups são enviados."};
+        for(int i=0;i<4;i++){
+            int x=48+(i%2)*604,y=228+(i/2)*180;
+            box(x,y,580,156,i==m.selected?chosen:panel);if(i==m.selected)box(x,y,5,156,teal);
+            text(x+28,y+24,524,29,title[i]);text(x+28,y+85,524,20,sub[i],muted);
         }
-        if(n)text(282,585,900,18,std::to_string(m.selected+1)+" de "+std::to_string(n),muted);
-        if(!m.message.empty())text(282,618,935,16,m.message,teal);
+        text(50,604,1180,20,"Backups locais: "+std::to_string(m.localCount)+"     Envios pendentes: "+std::to_string(m.pending),muted);
+    }
+    else if(m.screen==Screen::Profiles||m.screen==Screen::Games)
+    {
+        int n=count(m),first=(m.selected/4)*4;
+        text(50,177,1180,21,m.screen==Screen::Profiles?"Todos os saves ou somente os de um perfil.":m.profile.name,muted);
+        if(!n){text(76,288,1128,25,"Nenhum save de jogo encontrado neste ambiente.");text(76,348,1128,21,"Abra o SaveNX no mesmo sistema em que você joga. X: atualizar lista.",muted);}
+        for(int i=first;i<n&&i<first+4;i++){
+            int cell=i-first,x=48+(cell%2)*604,y=228+(cell/2)*180;
+            box(x,y,580,156,i==m.selected?chosen:panel);if(i==m.selected)box(x,y,5,156,teal);
+            auto name=m.screen==Screen::Profiles?m.profiles[i].name:m.games[i].name;
+            auto detail=m.screen==Screen::Profiles?std::to_string(m.profiles[i].saves)+" saves encontrados":m.games[i].owner;
+            if(m.screen==Screen::Games&&m.games[i].index)detail+="  ·  espaço "+std::to_string(m.games[i].index);
+            if(m.screen==Screen::Games&&m.games[i].rank)detail+="  ·  cópia alternativa";
+            text(x+28,y+27,524,25,name);text(x+28,y+88,524,20,detail,muted);
+        }
+        if(n)text(50,592,200,18,std::to_string(m.selected+1)+" de "+std::to_string(n),muted);
+        if(m.screen==Screen::Games&&n)text(274,592,958,18,m.games[m.selected].name,muted);
+        if(!m.message.empty())text(50,621,1180,16,m.message,teal);
+    }
+    else if(m.screen==Screen::Backups)
+    {
+        text(50,177,1180,21,m.game.name,muted);int n=count(m),first=(m.selected/6)*6;
+        if(!n)text(76,285,1128,25,"Nenhum backup encontrado. Pressione X para criar uma cópia.");
+        for(int i=first;i<n&&i<first+6;i++){
+            int y=216+(i-first)*62;box(48,y,1184,54,i==m.selected?chosen:panel);
+            text(72,y+10,1136,23,std::string(m.backups[i].cloud?"Nuvem  ·  ":"Local  ·  ")+m.backups[i].name);
+        }
+        if(n)text(50,604,210,18,std::to_string(m.selected+1)+" de "+std::to_string(n),muted);
+        if(!m.message.empty())text(284,604,948,18,m.message,teal);
     }
     else if(m.screen==Screen::Cloud)
     {
-        box(280,140,940,430,panel);text(310,168,870,28,m.connected?"Sua conta está conectada":"Conecte seu Google Drive",teal);
-        if(!m.authCode.empty()) {text(310,230,870,21,"No celular ou computador, abra:",muted);text(310,273,870,27,m.authUrl);text(310,327,870,44,m.authCode,teal);text(310,394,870,21,"Digite esse código e autorize o SaveNX.",muted);}
-        else {text(310,235,870,22,"Você autoriza pelo site oficial do Google.",muted);text(310,279,870,22,"A senha da sua conta fica com você.",muted);}
-        if(m.authCode.empty())for(int i=0;i<2;i++){box(310+i*440,475,410,58,i==m.selected?0x214d55:0x101827);text(330+i*440,490,370,21,i?"Enviar pendentes":m.connected?"Verificar conexão":"Conectar Google Drive");}
-        else text(310,491,870,21,"Aguardando sua autorização...     B: cancelar",teal);
-        if(!m.message.empty())text(282,600,935,18,m.message,muted);
+        text(50,177,1180,21,"Suas cópias ficam na sua conta Google.",muted);
+        box(48,226,1184,364,panel);text(80,250,1120,28,m.connected?"Sua conta está conectada":"Conecte seu Google Drive",teal);
+        if(!m.authCode.empty()){
+            text(80,307,1120,21,"No celular ou computador, abra:",muted);text(80,351,1120,27,m.authUrl);
+            text(80,402,1120,44,m.authCode,teal);text(80,471,1120,21,"Digite esse código e autorize o SaveNX.",muted);
+            text(80,535,1120,21,"Aguardando sua autorização...     B: cancelar",teal);
+        }else{
+            text(80,321,1120,22,"Você autoriza pelo site oficial do Google.",muted);text(80,366,1120,22,"A senha da sua conta fica com você.",muted);
+            for(int i=0;i<2;i++){int x=80+i*584;box(x,494,536,64,i==m.selected?chosen:bg);text(x+24,513,488,22,i?"Enviar pendentes":m.connected?"Verificar conexão":"Conectar Google Drive");}
+        }
+        if(!m.message.empty())text(50,621,1180,16,m.message,muted);
     }
     else if(m.screen==Screen::Settings)
     {
-        const std::string labels[]={std::string("Enviar backups à nuvem: ")+(m.autoUpload?"ativado":"desativado"),"Sobre o SaveNX"};
-        for(int i=0;i<2;i++){box(280,170+i*82,940,64,i==m.selected?0x214d55:panel);text(304,187+i*82,890,23,labels[i]);}
-        text(282,385,920,20,"As cópias locais e a proteção antes de restaurar ficam sempre ativas.",muted);
+        text(50,177,1180,21,"As cópias locais e a proteção antes de restaurar ficam sempre ativas.",muted);
+        for(int i=0;i<2;i++){
+            int x=48+i*604;box(x,258,580,188,i==m.selected?chosen:panel);if(i==m.selected)box(x,258,5,188,teal);
+            text(x+28,286,524,28,i?"Sobre o SaveNX":"Envio automático");
+            text(x+28,345,524,24,i?std::string("Versão ")+VERSION:m.autoUpload?"Ativado":"Desativado",teal);
+            text(x+28,395,524,18,i?"Aplicativo original para seus saves.":"Enviar à nuvem após cada novo backup.",muted);
+        }
     }
     else if(m.screen==Screen::Confirm)
     {
-        box(280,145,940,420,panel);text(310,180,870,25,m.game.name);text(310,238,870,20,m.target.name,muted);
-        text(310,302,870,22,"O save atual será copiado antes da restauração.",muted);
+        box(48,220,1184,344,panel);text(80,246,1120,25,m.game.name);text(80,297,1120,20,m.target.name,muted);
+        text(80,351,1120,22,"O save atual será copiado antes da restauração.",muted);
         const char* labels[]={"Voltar","Restaurar — segure A"};
-        for(int i=0;i<2;i++){box(310+i*440,428,410,70,m.selected==i?(i?0x713b45:0x214d55):bg);text(330+i*440,451,365,22,labels[i]);}
+        for(int i=0;i<2;i++){int x=80+i*584;box(x,445,536,74,m.selected==i?(i?0x713b45:chosen):bg);text(x+24,469,488,23,labels[i]);}
     }
     else
     {
-        box(280,160,940,350,panel);text(310,206,870,25,m.message);
-        if(m.screen==Screen::Working){box(310,300,860,12,0x293950);box(310,300,int(860*std::clamp(m.progress,0.0,1.0)),12,teal);text(310,353,870,20,m.canCancel?"B para cancelar. Sua cópia local será preservada.":"Finalizando a gravação. Aguarde nesta tela.",muted);}
-        else text(310,360,870,21,"Pressione A ou B para voltar.",teal);
+        box(48,224,1184,330,panel);text(80,270,1120,25,m.message);
+        if(m.screen==Screen::Working){
+            box(80,351,1120,12,0x293950);box(80,351,int(1120*std::clamp(m.progress,0.0,1.0)),12,teal);
+            text(80,411,1120,21,m.canCancel?"B para cancelar. Suas cópias locais serão preservadas.":"Finalizando a gravação. Aguarde nesta tela.",muted);
+        }else text(80,424,1120,22,"Pressione A ou B para voltar.",teal);
     }
-    box(252,652,1000,1,0x293950);
-    text(280,676,950,18,m.screen==Screen::Games?"A: ver backups     X: novo backup     B: voltar":m.screen==Screen::Backups?"A: restaurar     X: novo backup     B: voltar":"A: selecionar     B: voltar     +: sair",muted);
-    return d;
+    box(48,652,1184,1,0x293950);
+    const char* footer=m.screen==Screen::Games?"Manches ou direcional: navegar     A: ver backups     X: novo backup     B: voltar":m.screen==Screen::Profiles?"Manches ou direcional: navegar     A: selecionar     X: atualizar lista     B: voltar":m.screen==Screen::Backups?"Manches ou direcional: navegar     A: restaurar     X: novo backup     B: voltar":"Manches ou direcional: navegar     A: selecionar     B: voltar     +: sair";
+    text(50,677,1180,18,footer,muted);return d;
 }
 }

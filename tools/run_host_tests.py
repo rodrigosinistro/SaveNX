@@ -11,6 +11,8 @@ with tempfile.TemporaryDirectory(prefix='savenx-test-') as work:
     work = Path(work)
     run('g++', '-std=c++20', '-Wall', '-Wextra', '-Wno-misleading-indentation', '-Werror', '-Iinclude', 'tests/core_test.cpp', '-o', str(work / 'core'))
     run(str(work / 'core'))
+    run('g++', '-std=c++20', '-Wall', '-Wextra', '-Wno-misleading-indentation', '-Werror', '-Iinclude', 'tests/navigation_inventory_test.cpp', '-o', str(work/'navigation-inventory'))
+    run(str(work/'navigation-inventory'))
     spec = importlib.util.spec_from_file_location('configure', ROOT/'tools/configure_google.py')
     cfg = importlib.util.module_from_spec(spec);spec.loader.exec_module(cfg)
     original = bytearray(64);original[16:20] = b'NRO0'
@@ -30,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='savenx-test-') as work:
         fixture('valid.zip',[('save/data/value','PLAYER_DATA_123')])
         fixture('traversal.zip',[('save/../../escape','x')]);fixture('absolute.zip',[('/tmp/escape','x')])
         fixture('duplicate.zip',[('save/value','a'),('save/value','b')]);fixture('missing.zip',[('save/value','x')],None)
-        fixture('mismatch.zip',[('save/value','x')],dict(meta,index=1));fixture('invalid-hex.zip',[],dict(meta,title='000000000000000G'))
+        fixture('space-mismatch.zip',[('save/value','x')],dict(meta,space=4));fixture('mismatch.zip',[('save/value','x')],dict(meta,index=1));fixture('invalid-hex.zip',[],dict(meta,title='000000000000000G'))
         fixture('conflict.zip',[('save/value','x'),('save/value/child','x')]);fixture('oversize-meta.zip',[],dict(meta,game='x'*65536))
         fixture('corrupt.zip',[('save/value','PLAYER_DATA_123')]);bad=work/'corrupt.zip';bad.write_bytes(bad.read_bytes().replace(b'PLAYER_DATA_123',b'PLAYER_DATA_ABC'))
         with zipfile.ZipFile(work/'symlink.zip','w') as z:

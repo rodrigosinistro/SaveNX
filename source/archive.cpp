@@ -26,7 +26,7 @@ Manifest checkZip(const std::string&file,const Game*expected,const Context&ctx)
         if(entry==".savenx/manifest.json"){manifests++;auto j=parse(meta);if(!j||str(j.get(),"format")!="savenx.original.v1")throw std::runtime_error("Formato de backup não reconhecido.");
             auto tid=str(j.get(),"title"),u=str(j.get(),"user");if(!strictHex(tid,16)||!strictHex(u,32))throw std::runtime_error("Identificação de backup inválida.");
             m.game.title=std::stoull(tid,nullptr,16);m.game.uid={std::stoull(u.substr(16),nullptr,16),std::stoull(u.substr(0,16),nullptr,16)};
-            m.game.type=num(j.get(),"type");m.game.rank=num(j.get(),"rank");m.game.index=num(j.get(),"index");m.data=num(j.get(),"data_size");m.journal=num(j.get(),"journal_size");}
+            m.game.space=field(j.get(),"space")?num(j.get(),"space"):1;m.game.type=num(j.get(),"type");m.game.rank=num(j.get(),"rank");m.game.index=num(j.get(),"index");m.data=num(j.get(),"data_size");m.journal=num(j.get(),"journal_size");}
         state=unzGoToNextFile(z);}
         if(state!=UNZ_END_OF_LIST_OF_FILE||manifests!=1||m.data<0||m.journal<0||m.data>(16ll<<30)||m.journal>(16ll<<30))throw std::runtime_error("O backup está incompleto.");
         if(expected&&!sameSlot(m.game,*expected))throw std::runtime_error("Esse backup pertence a outro jogo, perfil ou espaço de save.");unzClose(z);return m;

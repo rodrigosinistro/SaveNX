@@ -36,31 +36,11 @@ void writeText(const std::string&p,const std::string&s)
 }
 std::string timestamp(){std::time_t t=std::time(nullptr);std::tm tm{};if(auto*value=std::gmtime(&t))tm=*value;char out[40];std::strftime(out,sizeof out,"%Y-%m-%d_%H-%M-%S",&tm);return out;}
 static AccountUid account(const std::array<uint64_t,2>&u){AccountUid a{};a.uid[0]=u[0];a.uid[1]=u[1];return a;}
-std::vector<Profile> profiles()
-{
-    AccountUid ids[8]{};s32 n{};sdk(accountListAllUsers(ids,8,&n),"listar os perfis");std::vector<Profile> out;
-    for(int i=0;i<n;i++){Profile p{{ids[i].uid[0],ids[i].uid[1]},"Perfil "+std::to_string(i+1),"",false};p.key="USER_"+uid(p.uid);
-        AccountProfile profile{};if(R_SUCCEEDED(accountGetProfile(&profile,ids[i]))){AccountProfileBase base{};if(R_SUCCEEDED(accountProfileGet(&profile,nullptr,&base))){base.nickname[sizeof(base.nickname)-1]=0;p.name=base.nickname;}accountProfileClose(&profile);}out.push_back(p);}
-    out.push_back({{},"Saves compartilhados","DEVICE",true});return out;
-}
-std::vector<Game> games(const Profile&p,const Context&ctx)
-{
-    FsSaveDataInfoReader reader{};sdk(fsOpenSaveDataInfoReader(&reader,FsSaveDataSpaceId_User),"consultar os saves");std::vector<Game> out;
-    try{FsSaveDataInfo page[16];s64 count{};do{ctx.check();sdk(fsSaveDataInfoReaderRead(&reader,page,16,&count),"ler a lista de saves");
-        for(int i=0;i<count;i++){auto&s=page[i];bool match=p.shared?s.save_data_type==FsSaveDataType_Device:(s.save_data_type==FsSaveDataType_Account&&s.uid.uid[0]==p.uid[0]&&s.uid.uid[1]==p.uid[1]);
-            if(!match||!s.application_id)continue;Game g{s.application_id,s.save_data_id,{s.uid.uid[0],s.uid.uid[1]},s.save_data_type,s.save_data_rank,s.save_data_index,"Jogo "+hex(s.application_id)};
-            auto data=std::make_unique<NsApplicationControlData>();u64 got{};NacpLanguageEntry*lang{};
-            if(R_SUCCEEDED(nsGetApplicationControlData(NsApplicationControlSource_Storage,g.title,data.get(),sizeof(*data),&got))&&R_SUCCEEDED(nacpGetLanguageEntry(&data->nacp,&lang))&&lang){lang->name[sizeof(lang->name)-1]=0;if(lang->name[0])g.name=lang->name;}
-            if(g.index)g.name+=" · espaço "+std::to_string(g.index);out.push_back(std::move(g));}
-        }while(count>0);fsSaveDataInfoReaderClose(&reader);
-    }catch(...){fsSaveDataInfoReaderClose(&reader);throw;}
-    std::sort(out.begin(),out.end(),[](auto&a,auto&b){return a.name<b.name;});return out;
-}
 struct SaveFs
 {
     FsFileSystem fs{};bool opened{};
     SaveFs(const Game&g,bool write){FsSaveDataAttribute a{};a.application_id=g.title;a.uid=account(g.uid);a.save_data_type=g.type;a.save_data_rank=g.rank;a.save_data_index=g.index;
-        sdk(write?fsOpenSaveDataFileSystem(&fs,FsSaveDataSpaceId_User,&a):fsOpenReadOnlySaveDataFileSystem(&fs,FsSaveDataSpaceId_User,&a),"abrir o save");opened=true;}
+        sdk(write?fsOpenSaveDataFileSystem(&fs,static_cast<FsSaveDataSpaceId>(g.space),&a):fsOpenReadOnlySaveDataFileSystem(&fs,static_cast<FsSaveDataSpaceId>(g.space),&a),"abrir o save");opened=true;}
     ~SaveFs(){if(opened)fsFsClose(&fs);}SaveFs(const SaveFs&)=delete;
 };
 static std::vector<FsDirectoryEntry> entries(FsFileSystem*f,const std::string&p)
@@ -87,12 +67,12 @@ static void zipDirectory(FsFileSystem*f,zipFile z,const std::string&rel,const Co
         }catch(...){if(opened)fsFileClose(&file);zipCloseFileInZip(z);throw;}}
 }
 
-std::string gameDirectory(const Profile&p,const Game&g){return path("/backups-v2/")+p.key+"/TITLE_"+hex(g.title)+"/"+slot(g);}
+std::string gameDirectory(const Profile&,const Game&g){return path("/backups-v2/")+ownerKey(g)+"/TITLE_"+hex(g.title)+"/"+slot(g);}
 Backup backup(const Profile&p,const Game&g,const Context&ctx,bool safety,bool enqueue)
 {
     ctx.check();if(ctx.report)ctx.report({safety?"Copiando o save atual para segurança...":"Criando uma cópia do save...",{}, {},0.12,true});
-    FsSaveDataExtraData extra{};sdk(fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(&extra,sizeof extra,FsSaveDataSpaceId_User,g.saveId),"ler os dados do save");
-    auto j=object();put(j.get(),"format",std::string("savenx.original.v1"));put(j.get(),"title",hex(g.title));put(j.get(),"user",uid(g.uid));put(j.get(),"type",g.type);put(j.get(),"rank",g.rank);put(j.get(),"index",g.index);put(j.get(),"data_size",extra.data_size);put(j.get(),"journal_size",extra.journal_size);put(j.get(),"game",g.name);
+    FsSaveDataExtraData extra{};sdk(fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(&extra,sizeof extra,static_cast<FsSaveDataSpaceId>(g.space),g.saveId),"ler os dados do save");
+    auto j=object();put(j.get(),"format",std::string("savenx.original.v1"));put(j.get(),"title",hex(g.title));put(j.get(),"user",uid(g.uid));put(j.get(),"type",g.type);put(j.get(),"rank",g.rank);put(j.get(),"index",g.index);put(j.get(),"data_size",extra.data_size);put(j.get(),"journal_size",extra.journal_size);put(j.get(),"game",g.name);put(j.get(),"space",g.space);
     const std::string id=timestamp()+"_"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const std::string name=(safety?"Segurança_":"")+id+".zip",dir=gameDirectory(p,g),file=dir+"/"+name,temp=file+".partial";fs::create_directories(dir);
     zipFile z=zipOpen64(temp.c_str(),APPEND_STATUS_CREATE);if(!z)throw std::runtime_error("Não foi possível criar o backup no SD.");
@@ -100,7 +80,7 @@ Backup backup(const Profile&p,const Game&g,const Context&ctx,bool safety,bool en
         int rc=zipClose(z,nullptr);z=nullptr;if(rc!=ZIP_OK)throw std::runtime_error("Falha ao fechar o backup.");checkZip(temp,&g,ctx);fs::rename(temp,file);
     }catch(...){if(z)zipClose(z,nullptr);std::error_code ec;fs::remove(temp,ec);throw;}
     const uint64_t size=fs::file_size(file);
-    if(enqueue){auto job=object();put(job.get(),"id",id);put(job.get(),"file",file);put(job.get(),"name",name);put(job.get(),"user",p.key);put(job.get(),"title","TITLE_"+hex(g.title));put(job.get(),"slot",slot(g));put(job.get(),"size",int64_t(size));writeText(path("/queue-v2/")+id+".json",encode(job.get()));}
+    if(enqueue){auto job=object();put(job.get(),"id",id);put(job.get(),"file",file);put(job.get(),"name",name);put(job.get(),"user",ownerKey(g));put(job.get(),"title","TITLE_"+hex(g.title));put(job.get(),"slot",slot(g));put(job.get(),"size",int64_t(size));writeText(path("/queue-v2/")+id+".json",encode(job.get()));}
     return {name,file,{},size,false};
 }
 // Close every writable file before committing the save filesystem.
@@ -157,8 +137,8 @@ static void apply(const Game&g,const std::string&file,int64_t journal,const Cont
 void restore(const Profile&p,const Game&g,const Backup&b,const Context&ctx)
 {
     auto m=checkZip(b.path,&g,ctx);auto safe=backup(p,g,ctx,true,false);ctx.check();
-    FsSaveDataExtraData extra{};sdk(fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(&extra,sizeof extra,FsSaveDataSpaceId_User,g.saveId),"verificar o destino");
-    if(m.data>extra.data_size||m.journal>extra.journal_size)sdk(fsExtendSaveDataFileSystem(FsSaveDataSpaceId_User,g.saveId,std::max<int64_t>(m.data,extra.data_size),std::max<int64_t>(m.journal,extra.journal_size)),"ajustar o espaço do save");
+    FsSaveDataExtraData extra{};sdk(fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(&extra,sizeof extra,static_cast<FsSaveDataSpaceId>(g.space),g.saveId),"verificar o destino");
+    if(m.data>extra.data_size||m.journal>extra.journal_size)sdk(fsExtendSaveDataFileSystem(static_cast<FsSaveDataSpaceId>(g.space),g.saveId,std::max<int64_t>(m.data,extra.data_size),std::max<int64_t>(m.journal,extra.journal_size)),"ajustar o espaço do save");
     if(ctx.report)ctx.report({"Restaurando o save...",{},{},0.55,false});
     try{apply(g,b.path,std::max<int64_t>(m.journal,extra.journal_size),ctx);}catch(...){log("Restore failed; restoring safety copy "+safe.path);try{apply(g,safe.path,extra.journal_size,ctx);}catch(...){throw std::runtime_error("A restauração falhou. A cópia de segurança está no SD.");}throw std::runtime_error("A restauração falhou; o save anterior foi recuperado.");}
 }

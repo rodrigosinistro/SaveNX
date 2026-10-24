@@ -37,10 +37,11 @@ namespace
     }
     void retry_task(sys::threadpool::JobData data)
     {
+        const auto taskData = std::static_pointer_cast<sys::Task::DataStruct>(data);
         if (!remote::get_remote_storage())
-        { set_status("Conecte o Google Drive antes de reenviar."); data->task->complete(); return; }
+        { set_status("Conecte o Google Drive antes de reenviar."); taskData->task->complete(); return; }
         remote::flush_pending();
-        data->task->complete();
+        taskData->task->complete();
     }
 }
 
@@ -103,7 +104,8 @@ void remote::configure_client()
 
 void remote::initialize(sys::threadpool::JobData data)
 {
-    sys::Task *task = data ? data->task : nullptr;
+    const auto taskData = std::static_pointer_cast<sys::Task::DataStruct>(data);
+    sys::Task *task = taskData ? taskData->task : nullptr;
     if (!task) { return; }
     if (!has_internet_connection())
     { set_status("Sem internet. Os backups locais continuam disponíveis."); task->complete(); return; }

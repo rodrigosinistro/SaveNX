@@ -1,0 +1,54 @@
+name: Build SaveNX
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: savenx-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check persistence and transfer boundaries
+        run: python3 tools/run_host_tests.py
+
+  switch:
+    needs: host-tests
+    runs-on: ubuntu-24.04
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Switch libraries
+        run: |
+          dkp-pacman -S --needed --noconfirm \
+            switch-dev switch-bzip2 switch-curl switch-freetype \
+            switch-harfbuzz switch-libjpeg-turbo switch-libjson-c \
+            switch-libpng switch-libwebp switch-sdl2 switch-sdl2_image \
+            switch-tinyxml2 switch-zlib
+      - name: Bundle current certificate authorities
+        run: |
+          mkdir -p romfs/certs
+          cp /etc/ssl/certs/ca-certificates.crt romfs/certs/cacert.pem
+      - name: Configure build client
+        env:
+          SAVENX_GOOGLE_CLIENT_ID: ${{ secrets.SAVENX_GOOGLE_CLIENT_ID }}
+          SAVENX_GOOGLE_CLIENT_SECRET: ${{ secrets.SAVENX_GOOGLE_CLIENT_SECRET }}
+        run: python3 tools/generate_oauth_header.py
+      - name: Compile Switch application
+        run: make -j2
+      - name: Package installation
+        run: python3 tools/package_switch.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SaveNX-v0.3.0-switch
+          path: SaveNX-v0.3.0-switch.zip
+          if-no-files-found: error
+          retention-days: 30

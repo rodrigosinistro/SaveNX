@@ -1,0 +1,41 @@
+build/
+.vscode/
+*.cbp
+*.layout
+
+.idea/
+cmake-build-debug/
+
+# build artifacts
+SaveNX.elf
+SaveNX.lst
+SaveNX.map
+SaveNX.nacp
+SaveNX.nro
+SaveNX.nso
+SaveNX.pfs0
+SaveNX*.zip
+dist/
+romfs/Text/
+
+# Never commit real Google OAuth credentials or refresh tokens.
+client_secret.json
+config/client_secret.json
+JKSV.nro.zip
+
+# Local authorization and generated OAuth client
+include/oauth_client.generated.hpp
+config/google-drive.json
+config/webdav.json
+*.job
+*.job.tmp
+*.zip.tmp
+
+__pycache__/
+*.pyc
+*.previous
+
+# CA trust bundle is supplied by the build container
+romfs/certs/cacert.pem
+
+Libraries/FsLib/Doxyfile*

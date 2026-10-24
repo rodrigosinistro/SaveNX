@@ -32,7 +32,7 @@ class ClassName
 {
     public:
         ClassName() = default;
-    
+
     private:
         // Member variables.
 };

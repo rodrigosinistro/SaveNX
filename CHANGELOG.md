@@ -8,6 +8,7 @@
 - Cliente OAuth configurável no build ou no aplicativo; persistência recuperável da sessão e tratamento de pending/slow_down/denied/expired.
 - Fila de uploads persistente com snapshots independentes, reenvio e confirmação por ID/tamanho.
 - Recupera uploads com resposta perdida por propriedade privada do Drive e mantém backups locais.
+- Codifica corretamente os parâmetros OAuth e as consultas por pendência no Drive.
 - Corrige fallback de dados de título e caracteres de controle/marcadores de cor em nomes.
 - Move buffers grandes de ZIP e NACP para o heap e reforça limpeza após inicialização incompleta.
 - Adiciona testes host e workflow de compilação e empacotamento Switch.

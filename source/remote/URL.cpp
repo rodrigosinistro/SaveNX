@@ -1,4 +1,5 @@
 #include "remote/URL.hpp"
+#include "remote/Encoding.hpp"
 
 #include <algorithm>
 #include <span>
@@ -47,30 +48,12 @@ remote::URL &remote::URL::append_path(std::string_view path) noexcept
 
 remote::URL &remote::URL::append_parameter(std::string_view param, std::string_view value) noexcept
 {
-    const size_t paramLength = param.length();
-    const size_t valueLength = value.length();
-    const size_t endLength   = m_offset + paramLength + valueLength + 2;
-    if (endLength >= SIZE_URL_BUFFER) { return *this; }
-
-    // Going to assume if a ? isn't found, we need to append it.
-    const char *find = std::char_traits<char>::find(m_urlBuffer, m_offset, '?');
-    if (!find) { m_urlBuffer[m_offset++] = '?'; }
-    else { m_urlBuffer[m_offset++] = '&'; }
-
-    // Append the parameter first.
-    size_t remainingLength = SIZE_URL_BUFFER - m_offset;
-    std::span<char> bufferSpan{&m_urlBuffer[m_offset], remainingLength};
-    std::copy(param.begin(), param.end(), bufferSpan.begin());
-    m_offset += paramLength;
-
-    // Equals.
-    m_urlBuffer[m_offset++] = '=';
-
-    // Recalc and align.
-    remainingLength = SIZE_URL_BUFFER - m_offset;
-    bufferSpan      = std::span<char>{&m_urlBuffer[m_offset], remainingLength};
-    std::copy(value.begin(), value.end(), bufferSpan.begin());
-    m_offset += valueLength;
+    const bool hasQuery = std::string_view(m_urlBuffer, m_offset).find('?') != std::string_view::npos;
+    const std::string fragment = std::string(hasQuery ? "&" : "?") + remote::percent_encode(param) + "=" + remote::percent_encode(value);
+    if (m_offset + fragment.size() >= SIZE_URL_BUFFER) { return *this; }
+    std::copy(fragment.begin(), fragment.end(), m_urlBuffer + m_offset);
+    m_offset += fragment.size();
+    m_urlBuffer[m_offset] = 0;
 
     return *this;
 }

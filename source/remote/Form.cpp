@@ -1,4 +1,5 @@
 #include "remote/Form.hpp"
+#include "remote/Encoding.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -8,27 +9,11 @@
 
 remote::Form &remote::Form::append_parameter(std::string_view param, std::string_view value) noexcept
 {
-    const size_t paramLength = param.length();
-    const size_t valueLength = value.length();
-    const size_t endLength   = m_offset + paramLength + valueLength + 1;
-    if (endLength >= SIZE_FORM_BUFFER) { return *this; }
-
-    if (m_offset > 0 && m_formBuffer[m_offset - 1] != '&') { m_formBuffer[m_offset++] = '&'; }
-
-    // Append the parameter first.
-    size_t remainingLength = SIZE_FORM_BUFFER - m_offset;
-    std::span<char> bufferSpan{&m_formBuffer[m_offset], remainingLength};
-    std::copy(param.begin(), param.end(), bufferSpan.begin());
-    m_offset += paramLength;
-
-    // Add the =
-    m_formBuffer[m_offset++] = '=';
-
-    // Recalc, append value.
-    remainingLength = SIZE_FORM_BUFFER - m_offset;
-    bufferSpan      = std::span<char>{&m_formBuffer[m_offset], remainingLength};
-    std::copy(value.begin(), value.end(), bufferSpan.begin());
-    m_offset += valueLength;
+    const std::string fragment = std::string(m_offset ? "&" : "") + remote::percent_encode(param) + "=" + remote::percent_encode(value);
+    if (m_offset + fragment.size() >= SIZE_FORM_BUFFER) { return *this; }
+    std::copy(fragment.begin(), fragment.end(), m_formBuffer + m_offset);
+    m_offset += fragment.size();
+    m_formBuffer[m_offset] = 0;
 
     return *this;
 }

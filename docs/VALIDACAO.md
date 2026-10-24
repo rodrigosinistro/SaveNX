@@ -2,11 +2,12 @@
 
 ## Verificação automatizada
 
-`python3 tools/run_host_tests.py` compila e executa três testes C++ sem SDK do Switch:
+`python3 tools/run_host_tests.py` compila e executa quatro testes C++ sem SDK do Switch:
 
 - caminhos de ZIP, incluindo rejeição de traversal;
 - fila persistente, snapshot independente, recuperação após reinício, publicação interrompida, confirmação e preservação do original;
 - limites de resposta do upload (200/201, ID e tamanho), códigos transitórios e origem HTTPS da sessão;
+- codificação de formulários OAuth e consultas Drive com espaços, acentos e símbolos reservados;
 - texto UTF-8 e neutralização dos marcadores de cor da interface;
 - escrita e recuperação do arquivo de sessão.
 

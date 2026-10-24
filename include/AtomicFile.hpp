@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdio>
+#include <fcntl.h>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -21,8 +22,14 @@ namespace savenx
         if (!out) { return false; }
         bool ok = std::fwrite(bytes.data(), 1, bytes.size(), out) == bytes.size();
         ok = std::fflush(out) == 0 && ok;
-        if (ok) { ok = ::fsync(::fileno(out)) == 0; }
         ok = std::fclose(out) == 0 && ok;
+        if (!ok) { return false; }
+        // Newlib does not expose fileno in strict C++ mode; reopen the completed
+        // file through its POSIX descriptor to request a real filesystem flush.
+        const int descriptor = ::open(temp.c_str(), O_RDWR);
+        if (descriptor < 0) { return false; }
+        ok = ::fsync(descriptor) == 0;
+        ok = ::close(descriptor) == 0 && ok;
         if (!ok) { return false; }
         std::error_code ec;
         std::filesystem::rename(temp, path, ec);

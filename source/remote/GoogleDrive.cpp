@@ -166,7 +166,13 @@ bool remote::GoogleDrive::upload_file(const fslib::Path &source, std::string_vie
         {
             fslib::File file(source, FsOpenMode_Read);
             bool found{};
-            if (!file.is_open() || !find_uploaded_job(key, file.get_size(), found)) { return false; }
+            if (!file.is_open()) { return false; }
+            if (!find_uploaded_job(key, file.get_size(), found))
+            {
+                if (!remote::retryable_upload(m_lastTransferCode)) { return false; }
+                if (attempt < 2) { std::this_thread::sleep_for(std::chrono::milliseconds(500 * (1 << attempt))); }
+                continue;
+            }
             if (found) { return true; }
         }
         if (upload_attempt(source, name, key, task)) { return true; }
@@ -190,7 +196,9 @@ bool remote::GoogleDrive::find_uploaded_job(const std::string &key, std::int64_t
     curl::set_option(m_curl, CURLOPT_HTTPHEADER, headers.get());
     curl::set_option(m_curl, CURLOPT_WRITEFUNCTION, curl::write_response_string);
     curl::set_option(m_curl, CURLOPT_WRITEDATA, &response);
-    if (!curl::perform(m_curl) || curl::get_response_code(m_curl) != 200) { return false; }
+    if (!curl::perform(m_curl)) { m_lastTransferCode = 0; return false; }
+    m_lastTransferCode = curl::get_response_code(m_curl);
+    if (m_lastTransferCode != 200) { return false; }
     auto body = json::new_object(json_tokener_parse, response.c_str());
     auto files = body ? json::get_object(body, "files") : nullptr;
     if (!files || !json_object_is_type(files, json_type_array)) { return false; }
@@ -665,7 +673,7 @@ bool remote::GoogleDrive::request_listing()
     url.append_parameter("fields", "nextPageToken,files(name,id,size,parents,mimeType)")
         .append_parameter("orderBy", "name_natural")
         .append_parameter("pageSize", "256")
-        .append_parameter("q", "trashed%3Dfalse"); // This works, but could get messy if more parameters are added.
+        .append_parameter("q", "trashed = false"); // This works, but could get messy if more parameters are added.
 
     std::string response;
     curl::prepare_get(m_curl);

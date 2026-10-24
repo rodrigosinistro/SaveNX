@@ -41,7 +41,7 @@ namespace ui
             /// @brief Whether or not the title is a favorite.
             bool m_isFavorite{};
 
-            
+
             int m_index{};
 
             /// @brief Title's icon texture.

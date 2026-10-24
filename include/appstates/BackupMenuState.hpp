@@ -84,19 +84,19 @@ class BackupMenuState final : public BaseState
             fslib::Path *basePath{};
 
             /// @brief Path. This changes according to the context used.
-            fslib::Path path{}; 
+            fslib::Path path{};
 
             /// @brief Name to use when the file is uploaded remotely.
             std::string remoteName{};
 
             /// @brief This is set and used when something is being targetted remotely.
-            remote::Item *remoteItem{}; 
+            remote::Item *remoteItem{};
 
             /// @brief This is a pointer to the backup menu instance so refresh() and save_data_written() can be called.
             BackupMenuState *spawningState{};
 
             /// @brief Signals whether or not the backup fuctions should kill the task when finished. This is so they can be reused.
-            bool killTask = false; 
+            bool killTask = false;
 
             /// @brief Result of the most recent backup operation. Used to gate destructive restore steps.
             bool operationSucceeded = false;

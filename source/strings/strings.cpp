@@ -50,6 +50,7 @@ bool strings::initialize()
     // This is in the romfs, so fslib can't touch this.
     std::FILE *textFile = std::fopen(stringPath.c_str(), "rb");
     if (!textFile) { return false; }
+    const std::unique_ptr<std::FILE, decltype(&std::fclose)> fileGuard(textFile, &std::fclose);
 
     uLongf uncompressedSize{};
     uLongf compressedSize{};
@@ -58,7 +59,7 @@ bool strings::initialize()
     if (!readFullSize || !readCompSize) { return false; }
 
     auto readBuffer   = std::make_unique<sys::Byte[]>(compressedSize);
-    auto uncompBuffer = std::make_unique<sys::Byte[]>(uncompressedSize);
+    auto uncompBuffer = std::make_unique<sys::Byte[]>(uncompressedSize + 1);
     if (!readBuffer || !uncompBuffer) { return false; }
 
     const bool goodRead = std::fread(readBuffer.get(), 1, compressedSize, textFile) == compressedSize;

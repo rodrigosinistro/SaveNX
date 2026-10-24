@@ -1,0 +1,9 @@
+/build/
+/dist/
+/SaveNX.elf
+/SaveNX.nro
+/SaveNX.nacp
+/SaveNX-*-switch.zip
+/romfs/certs/
+__pycache__/
+*.pyc

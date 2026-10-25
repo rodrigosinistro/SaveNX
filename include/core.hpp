@@ -10,7 +10,7 @@
 
 namespace nx
 {
-inline constexpr const char *VERSION = "0.4.1";
+inline constexpr const char *VERSION = "0.4.2";
 inline constexpr const char *ROOT = "sdmc:/switch/SaveNX";
 enum class Screen { Home, Profiles, Games, Backups, Cloud, Settings, Confirm, Working, Message };
 struct Profile { std::array<uint64_t,2> uid{}; std::string name,key; bool shared{},all{}; int saves{}; };
@@ -127,7 +127,7 @@ inline std::vector<Draw> frame(const Model& m)
             text(80,402,1120,44,m.authCode,teal);text(80,471,1120,21,"Digite esse código e autorize o SaveNX.",muted);
             text(80,535,1120,21,"Aguardando sua autorização...     B: cancelar",teal);
         }else{
-            text(80,321,1120,22,"Você autoriza pelo site oficial do Google.",muted);text(80,366,1120,22,"A senha da sua conta fica com você.",muted);
+            text(80,321,1120,22,m.connected?"Cópias locais concluídas: "+std::to_string(m.localCount):"Você autoriza pelo site oficial do Google.",muted);text(80,366,1120,22,m.connected?"Envios pendentes: "+std::to_string(m.pending):"A senha da sua conta fica com você.",muted);
             for(int i=0;i<2;i++){int x=80+i*584;box(x,494,536,64,i==m.selected?chosen:bg);text(x+24,513,488,22,i?"Enviar pendentes":m.connected?"Verificar conexão":"Conectar Google Drive");}
         }
         if(!m.message.empty())text(50,621,1180,16,m.message,muted);

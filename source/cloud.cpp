@@ -26,7 +26,7 @@ Response request(const std::string&method,const std::string&url,const std::vecto
     for(auto&s:headers)list=curl_slist_append(list,s.c_str());
     curl_easy_setopt(c,CURLOPT_URL,url.c_str());curl_easy_setopt(c,CURLOPT_HTTPHEADER,list);curl_easy_setopt(c,CURLOPT_SSL_VERIFYPEER,1L);curl_easy_setopt(c,CURLOPT_SSL_VERIFYHOST,2L);
     curl_easy_setopt(c,CURLOPT_CAINFO,"romfs:/certs/cacert.pem");curl_easy_setopt(c,CURLOPT_CONNECTTIMEOUT,15L);curl_easy_setopt(c,CURLOPT_LOW_SPEED_LIMIT,1L);curl_easy_setopt(c,CURLOPT_LOW_SPEED_TIME,30L);
-    curl_easy_setopt(c,CURLOPT_TIMEOUT,(upload.empty()&&download.empty())?60L:0L);curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);curl_easy_setopt(c,CURLOPT_USERAGENT,"SaveNX/0.4.1");
+    curl_easy_setopt(c,CURLOPT_TIMEOUT,(upload.empty()&&download.empty())?60L:0L);curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);curl_easy_setopt(c,CURLOPT_USERAGENT,"SaveNX/0.4.2");
     curl_easy_setopt(c,CURLOPT_PROTOCOLS,long(CURLPROTO_HTTPS));curl_easy_setopt(c,CURLOPT_HEADERFUNCTION,header);curl_easy_setopt(c,CURLOPT_HEADERDATA,&r.headers);
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,receive);curl_easy_setopt(c,CURLOPT_WRITEDATA,&r.body);curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);curl_easy_setopt(c,CURLOPT_XFERINFOFUNCTION,progress);curl_easy_setopt(c,CURLOPT_XFERINFODATA,&ctx);
     if(method=="POST"){curl_easy_setopt(c,CURLOPT_POST,1L);curl_easy_setopt(c,CURLOPT_POSTFIELDS,body.c_str());curl_easy_setopt(c,CURLOPT_POSTFIELDSIZE,body.size());}

@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib
 import json
 import zipfile
-VERSION = '0.4.1'
+VERSION = '0.4.2'
 ROOT = Path(__file__).resolve().parents[1]
 def package(nro=None, output=None):
     nro = Path(nro or ROOT / 'SaveNX.nro')

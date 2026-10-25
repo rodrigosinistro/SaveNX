@@ -78,7 +78,7 @@ class App
     }
     void flush(const Context&ctx)
     {
-        if(!cloud.connected())return;try{cloud.flush(ctx);}catch(const std::exception&e){ctx.check();log(e.what());result.message="Sua cópia local está salva. O envio ficou pendente.";}
+        if(!cloud.connected())return;try{int sent=cloud.flush(ctx);if(sent)result.message=std::to_string(sent)+" backups confirmados no Google Drive. Cópias locais preservadas.";}catch(const std::exception&e){ctx.check();log(e.what());result.message="Sua cópia local está salva. O envio ficou pendente.";}
     }
     void start(Task kind)
     {
@@ -92,7 +92,7 @@ class App
             case Task::All:{int total=0;for(auto&p:nx::profiles(ctx))if(!p.all)for(auto&g:nx::games(p,ctx)){ctx.check();nx::backup(p,g,ctx,false,upload);total++;}result.message=std::to_string(total)+" backups locais concluídos.";if(upload)flush(ctx);break;}
             case Task::Restore:{auto b=target.cloud?cloud.download(target,ctx):target;nx::restore(profile,game,b,ctx);result.message="Save restaurado. A cópia de segurança foi preservada.";result.backups=localBackups(profile,game);break;}
             case Task::Connect:cloud.connect(ctx);result.message="Google Drive conectado.";flush(ctx);break;
-            case Task::Flush:cloud.flush(ctx);result.message="Envios pendentes concluídos.";break;}
+            case Task::Flush:{int sent=cloud.flush(ctx);result.message=sent?std::to_string(sent)+" backups confirmados no Google Drive.":"Nenhum envio pendente. Crie um backup em Meus jogos com X.";break;}}
         }catch(const std::exception&e){if(kind!=Task::Resume)result.error=e.what();log(e.what());}result.connected=cloud.connected();try{result.pending=pendingCount();result.local=backupCount();}catch(const std::exception&e){log(e.what());}};
         if(R_FAILED(threadCreate(&thread,threadEntry,this,nullptr,0x100000,0x2c,1)))throw std::runtime_error("Não foi possível iniciar a tarefa.");
         if(R_FAILED(threadStart(&thread))){threadClose(&thread);throw std::runtime_error("Não foi possível executar a tarefa.");}busy=true;

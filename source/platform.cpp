@@ -1,6 +1,7 @@
 #include "platform.hpp"
 #include "json_util.hpp"
 #include "archive.hpp"
+#include "save_fs.hpp"
 #include <switch.h>
 #include <minizip/zip.h>
 #include <minizip/unzip.h>
@@ -20,7 +21,13 @@ namespace nx {
 namespace fs=std::filesystem;
 static std::string path(std::string_view s){return std::string(ROOT)+std::string(s);}
 void log(const std::string&s){static std::mutex lock;std::lock_guard g(lock);std::ofstream f(path("/logs/savenx.log"),std::ios::app);f<<timestamp()<<" "<<s<<"\n";}
-static void sdk(Result r,const char*what){if(R_FAILED(r)){log(std::string(what)+" code="+hex(r));throw std::runtime_error(std::string("Não foi possível ")+what+".");}}
+static void sdk(Result r,const char*what,std::string_view detail={})
+{
+    if(R_FAILED(r)){
+        log(std::string(what)+" code="+hex(r)+(detail.empty()?"":" path="+std::string(detail)));
+        throw std::runtime_error(std::string("Não foi possível ")+what+". FS "+hex(r).substr(8));
+    }
+}
 void prepare(){std::error_code ec;for(auto*d:{"/backups-v2","/queue-v2","/config","/temp","/logs"}){fs::create_directories(path(d),ec);if(ec)throw std::runtime_error("Não foi possível preparar o cartão SD.");}}
 std::string readText(const std::string&p){std::ifstream in(p,std::ios::binary);if(!in){in.clear();in.open(p+".previous",std::ios::binary);}return {std::istreambuf_iterator<char>(in),{}};}
 void writeText(const std::string&p,const std::string&s)
@@ -45,7 +52,7 @@ struct SaveFs
 };
 static std::vector<FsDirectoryEntry> entries(FsFileSystem*f,const std::string&p)
 {
-    FsDir dir{};sdk(fsFsOpenDirectory(f,p.c_str(),FsDirOpenMode_ReadDirs|FsDirOpenMode_ReadFiles,&dir),"listar os arquivos do save");std::vector<FsDirectoryEntry> out;
+    FsDir dir{};sdk(savedata::openDirectory(f,p,FsDirOpenMode_ReadDirs|FsDirOpenMode_ReadFiles,&dir),"listar os arquivos do save",p);std::vector<FsDirectoryEntry> out;
     try{FsDirectoryEntry e{};s64 n{};do{sdk(fsDirRead(&dir,&n,1,&e),"ler a pasta do save");if(n)out.push_back(e);}while(n);fsDirClose(&dir);}catch(...){fsDirClose(&dir);throw;}return out;
 }
 static void zipAdd(zipFile z,const std::string&name,const void*data,size_t n)
@@ -60,7 +67,7 @@ static void zipDirectory(FsFileSystem*f,zipFile z,const std::string&rel,const Co
     for(auto&e:entries(f,"/"+rel)){ctx.check();e.name[sizeof(e.name)-1]=0;std::string next=rel+e.name;if(!relative(next))throw std::runtime_error("O save contém um caminho inválido.");
         if(e.type==FsDirEntryType_Dir){zipAdd(z,"save/"+next+"/",nullptr,0);zipDirectory(f,z,next+"/",ctx,depth+1);continue;}
         zip_fileinfo zi{};if(zipOpenNewFileInZip64(z,("save/"+next).c_str(),&zi,nullptr,0,nullptr,0,nullptr,Z_DEFLATED,6,1)!=ZIP_OK)throw std::runtime_error("Não foi possível compactar o save.");
-        FsFile file{};sdk(fsFsOpenFile(f,("/"+next).c_str(),FsOpenMode_Read,&file),"ler o arquivo do save");bool opened=true;
+        FsFile file{};sdk(savedata::openFile(f,"/"+next,FsOpenMode_Read,&file),"abrir o arquivo do save","/"+next);bool opened=true;
         try{for(s64 off=0;off<e.file_size;){ctx.check();u64 got{};sdk(fsFileRead(&file,off,buffer.get(),std::min<s64>(65536,e.file_size-off),FsReadOption_None,&got),"ler o save");
                 if(!got||zipWriteInFileInZip(z,buffer.get(),got)!=ZIP_OK)throw std::runtime_error("O backup ficou incompleto.");off+=got;}
             fsFileClose(&file);opened=false;if(zipCloseFileInZip(z)!=ZIP_OK)throw std::runtime_error("Falha ao finalizar a compactação.");
@@ -70,7 +77,7 @@ static void zipDirectory(FsFileSystem*f,zipFile z,const std::string&rel,const Co
 std::string gameDirectory(const Profile&,const Game&g){return path("/backups-v2/")+ownerKey(g)+"/TITLE_"+hex(g.title)+"/"+slot(g);}
 Backup backup(const Profile&p,const Game&g,const Context&ctx,bool safety,bool enqueue)
 {
-    ctx.check();if(ctx.report)ctx.report({safety?"Copiando o save atual para segurança...":"Criando uma cópia do save...",{}, {},0.12,true});
+    ctx.check();log("Backup start title="+hex(g.title)+" save="+hex(g.saveId)+" owner="+ownerKey(g)+" slot="+slot(g));if(ctx.report)ctx.report({safety?"Copiando o save atual para segurança...":"Criando uma cópia do save...",{}, {},0.12,true});
     FsSaveDataExtraData extra{};sdk(fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(&extra,sizeof extra,static_cast<FsSaveDataSpaceId>(g.space),g.saveId),"ler os dados do save");
     auto j=object();put(j.get(),"format",std::string("savenx.original.v1"));put(j.get(),"title",hex(g.title));put(j.get(),"user",uid(g.uid));put(j.get(),"type",g.type);put(j.get(),"rank",g.rank);put(j.get(),"index",g.index);put(j.get(),"data_size",extra.data_size);put(j.get(),"journal_size",extra.journal_size);put(j.get(),"game",g.name);put(j.get(),"space",g.space);
     const std::string id=timestamp()+"_"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -81,14 +88,14 @@ Backup backup(const Profile&p,const Game&g,const Context&ctx,bool safety,bool en
     }catch(...){if(z)zipClose(z,nullptr);std::error_code ec;fs::remove(temp,ec);throw;}
     const uint64_t size=fs::file_size(file);
     if(enqueue){auto job=object();put(job.get(),"id",id);put(job.get(),"file",file);put(job.get(),"name",name);put(job.get(),"user",ownerKey(g));put(job.get(),"title","TITLE_"+hex(g.title));put(job.get(),"slot",slot(g));put(job.get(),"size",int64_t(size));writeText(path("/queue-v2/")+id+".json",encode(job.get()));}
-    return {name,file,{},size,false};
+    log("Backup verified bytes="+std::to_string(size)+" file="+file);return {name,file,{},size,false};
 }
 // Close every writable file before committing the save filesystem.
 static void ensureDirectories(FsFileSystem*fs,const std::string&rel)
 {
     for(size_t slash=rel.find('/');slash!=std::string::npos;slash=rel.find('/',slash+1)){
         auto p="/"+rel.substr(0,slash);FsDirEntryType type{};
-        if(R_FAILED(fsFsGetEntryType(fs,p.c_str(),&type))){sdk(fsFsCreateDirectory(fs,p.c_str()),"recriar as pastas do save");sdk(fsFsCommit(fs),"confirmar uma pasta");}
+        if(R_FAILED(savedata::entryType(fs,p,&type))){sdk(savedata::createDirectory(fs,p),"recriar as pastas do save");sdk(fsFsCommit(fs),"confirmar uma pasta");}
         else if(type!=FsDirEntryType_Dir)throw std::runtime_error("O backup contém um conflito de pastas.");
     }
 }
@@ -97,7 +104,7 @@ static void apply(const Game&g,const std::string&file,int64_t journal,const Cont
     SaveFs save(g,true);
     for(auto&e:entries(&save.fs,"/")){
         e.name[sizeof(e.name)-1]=0;std::string p="/"+std::string(e.name);
-        sdk(e.type==FsDirEntryType_Dir?fsFsDeleteDirectoryRecursively(&save.fs,p.c_str()):fsFsDeleteFile(&save.fs,p.c_str()),"preparar o destino da restauração");
+        sdk(e.type==FsDirEntryType_Dir?savedata::deleteDirectoryTree(&save.fs,p):savedata::deleteFile(&save.fs,p),"preparar o destino da restauração");
         sdk(fsFsCommit(&save.fs),"confirmar o espaço de restauração");
     }
     unzFile z=unzOpen64(file.c_str());if(!z)throw std::runtime_error("Não foi possível reabrir o backup.");auto buffer=std::make_unique<char[]>(65536);
@@ -111,7 +118,7 @@ static void apply(const Game&g,const std::string&file,int64_t journal,const Cont
             if(entry.starts_with("save/")&&entry!="save/"){
                 auto rel=entry.substr(5);ensureDirectories(&save.fs,rel);
                 if(rel.back()!='/'){
-                    auto target="/"+rel;sdk(fsFsCreateFile(&save.fs,target.c_str(),info.uncompressed_size,0),"criar um arquivo do save");
+                    auto target="/"+rel;sdk(savedata::createFile(&save.fs,target,info.uncompressed_size,0),"criar um arquivo do save");
                     sdk(fsFsCommit(&save.fs),"confirmar o arquivo criado");
                     FsFile f{};bool opened=false;
                     try{
@@ -119,7 +126,7 @@ static void apply(const Game&g,const std::string&file,int64_t journal,const Cont
                         s64 off=0,since=0;size_t chunk=journal>0?std::max<int64_t>(4096,std::min<int64_t>(65536,journal/4)):65536;
                         while(true){
                             int n=unzReadCurrentFile(z,buffer.get(),chunk);if(n<0)throw std::runtime_error("Falha ao extrair o backup.");if(!n)break;
-                            if(!opened){sdk(fsFsOpenFile(&save.fs,target.c_str(),FsOpenMode_Write,&f),"abrir o destino do save");opened=true;}
+                            if(!opened){sdk(savedata::openFile(&save.fs,target,FsOpenMode_Write,&f),"abrir o destino do save");opened=true;}
                             sdk(fsFileWrite(&f,off,buffer.get(),n,FsWriteOption_None),"escrever os dados do save");off+=n;since+=n;
                             if(journal>0&&since>=journal/2){sdk(fsFileFlush(&f),"confirmar os dados");fsFileClose(&f);opened=false;sdk(fsFsCommit(&save.fs),"confirmar a restauração");since=0;}
                         }

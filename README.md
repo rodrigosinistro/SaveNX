@@ -1,4 +1,4 @@
-# SaveNX 0.4.1
+# SaveNX 0.4.2
 
 Aplicativo homebrew original para backup e restauração de saves do Nintendo Switch, com cópias no cartão SD e no Google Drive pessoal.
 
@@ -35,7 +35,7 @@ O usuário escolhe **Google Drive → Conectar Google Drive**, abre o endereço 
 
 O cadastro OAuth pertence ao aplicativo e precisa estar incluído no pacote pelo mantenedor. Para compilação própria, use um cliente Google do tipo **TVs and Limited Input devices**, com Drive API e escopo `drive.file`. O workflow pode recebê-lo pelos secrets `SAVENX_GOOGLE_CLIENT_ID` e `SAVENX_GOOGLE_CLIENT_SECRET`. Sem essa configuração, as operações locais funcionam e a conexão informa que o pacote ainda não está preparado. Nenhum cadastro pessoal é publicado neste repositório.
 
-Os backups usam `SaveNX/Backups-v2/PERFIL/TITLE_ID/ESPAÇO` na conta Drive autorizada. A fila no SD só é removida depois da confirmação de ID e tamanho do arquivo remoto. A cópia local permanece.
+Os backups usam `SaveNX/Backups-v2/PERFIL/TITLE_ID/ESPAÇO` na conta Drive autorizada. A tela de nuvem mostra cópias locais concluídas e envios pendentes. A contagem de saves por perfil informa os dados detectados no console; o backup só passa a existir após concluir e validar o ZIP. A fila no SD só é removida depois da confirmação de ID e tamanho do arquivo remoto. A cópia local permanece.
 
 ## Dados e compatibilidade
 
@@ -71,7 +71,9 @@ Testes de host:
 python3 tools/run_host_tests.py
 ```
 
-Os testes exercitam ambos os manches e as quatro direções, repetição e limites da grade, consultas alternativas de saves, deduplicação e seleção por perfil, caminhos de arquivos, isolamento de perfil/jogo/espaço, CRC e preflight dos ZIPs, confirmação de upload, navegação, limites de todas as telas e configuração do pacote. GitHub Actions compila o NRO e gera um ZIP instalável. Compilação e testes de host não substituem o teste no console real ou a autorização da conta Google.
+O acesso direto aos arquivos usa buffers próprios de `FS_MAX_PATH` bytes em todas as chamadas de caminho ao libnx, inclusive na restauração. Não passa `std::string::c_str()` curto para o bloco IPC de tamanho fixo.
+
+Os testes incluem uma reprodução com página de memória protegida para caminhos curtos e um teste do motor real de backup/restauração com SDK simulado: arquivos binários, Unicode, vazios, pastas aninhadas, conteúdo do ZIP, fila, falhas de leitura, limpeza de parciais e cópia de segurança. Também exercitam ambos os manches e as quatro direções, repetição e limites da grade, consultas alternativas de saves, deduplicação e seleção por perfil, caminhos de arquivos, isolamento de perfil/jogo/espaço, CRC e preflight dos ZIPs, confirmação de upload, navegação, limites de todas as telas e configuração do pacote. GitHub Actions compila o NRO e gera um ZIP instalável. Compilação e testes de host não substituem o teste no console real ou a autorização da conta Google.
 
 ## Licença
 

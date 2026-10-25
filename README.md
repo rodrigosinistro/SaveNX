@@ -35,7 +35,7 @@ O usuário escolhe **Google Drive → Conectar Google Drive**, abre o endereço 
 
 O cadastro OAuth pertence ao aplicativo e precisa estar incluído no pacote pelo mantenedor. Para compilação própria, use um cliente Google do tipo **TVs and Limited Input devices**, com Drive API e escopo `drive.file`. O workflow pode recebê-lo pelos secrets `SAVENX_GOOGLE_CLIENT_ID` e `SAVENX_GOOGLE_CLIENT_SECRET`. Sem essa configuração, as operações locais funcionam e a conexão informa que o pacote ainda não está preparado. Nenhum cadastro pessoal é publicado neste repositório.
 
-Os backups usam `SaveNX/Backups-v2/PERFIL/TITLE_ID/ESPAÇO` na conta Drive autorizada. A tela de nuvem mostra cópias locais concluídas e envios pendentes. A contagem de saves por perfil informa os dados detectados no console; o backup só passa a existir após concluir e validar o ZIP. A fila no SD só é removida depois da confirmação de ID e tamanho do arquivo remoto. A cópia local permanece.
+Os backups usam `SaveNX/Backups-v2/PERFIL/TITLE_ID/ESPAÇO` na conta Drive autorizada. Todo backup manual concluído entra na fila de envio, mesmo com o envio automático desativado. O ajuste automático controla apenas o envio imediato; “Enviar pendentes” continua disponível para envio manual. A tela de nuvem mostra cópias locais concluídas e envios pendentes. A contagem de saves por perfil informa os dados detectados no console; o backup só passa a existir após concluir e validar o ZIP. A fila no SD só é removida depois da confirmação de ID e tamanho do arquivo remoto. A cópia local permanece.
 
 ## Dados e compatibilidade
 

@@ -88,8 +88,8 @@ class App
             switch(kind){case Task::Resume:if(ctx.report)ctx.report({"Verificando a conexão Google...",{},{},0.1,true});cloud.resume(ctx);if(upload)flush(ctx);break;case Task::Profiles:result.profiles=nx::profiles(ctx);break;
             case Task::Games:result.games=nx::games(profile,ctx);if(result.games.empty())result.message="X: buscar novamente. A consulta foi registrada para diagnóstico.";break;
             case Task::Backups:result.backups=backups(profile,game,ctx);break;
-            case Task::Backup:nx::backup(profile,game,ctx,false,upload);result.message="Backup local concluído.";if(upload)flush(ctx);result.backups=backups(profile,game,ctx);break;
-            case Task::All:{int total=0;for(auto&p:nx::profiles(ctx))if(!p.all)for(auto&g:nx::games(p,ctx)){ctx.check();nx::backup(p,g,ctx,false,upload);total++;}result.message=std::to_string(total)+" backups locais concluídos.";if(upload)flush(ctx);break;}
+            case Task::Backup:nx::backup(profile,game,ctx,false,true);result.message="Backup local concluído.";if(upload)flush(ctx);result.backups=backups(profile,game,ctx);break;
+            case Task::All:{int total=0;for(auto&p:nx::profiles(ctx))if(!p.all)for(auto&g:nx::games(p,ctx)){ctx.check();nx::backup(p,g,ctx,false,true);total++;}result.message=std::to_string(total)+" backups locais concluídos.";if(upload)flush(ctx);break;}
             case Task::Restore:{auto b=target.cloud?cloud.download(target,ctx):target;nx::restore(profile,game,b,ctx);result.message="Save restaurado. A cópia de segurança foi preservada.";result.backups=localBackups(profile,game);break;}
             case Task::Connect:cloud.connect(ctx);result.message="Google Drive conectado.";flush(ctx);break;
             case Task::Flush:{int sent=cloud.flush(ctx);result.message=sent?std::to_string(sent)+" backups confirmados no Google Drive.":"Nenhum envio pendente. Crie um backup em Meus jogos com X.";break;}}

@@ -11,6 +11,8 @@ with tempfile.TemporaryDirectory(prefix='savenx-test-') as work:
     work = Path(work)
     run('g++', '-std=c++20', '-Wall', '-Wextra', '-Wno-misleading-indentation', '-Werror', '-Iinclude', 'tests/core_test.cpp', '-o', str(work / 'core'))
     run(str(work / 'core'))
+    run('g++', '-std=c++20', '-Wall', '-Wextra', '-Wno-misleading-indentation', '-Werror', '-Iinclude', 'tests/retention_test.cpp', '-o', str(work/'retention'))
+    run(str(work/'retention'))
     run('g++', '-std=c++20', '-Wall', '-Wextra', '-Wno-misleading-indentation', '-Werror', '-Iinclude', 'tests/fs_path_test.cpp', '-o', str(work/'fs-path'))
     run(str(work/'fs-path'))
     run('g++', '-std=c++20', '-Wall', '-Wextra', '-Wno-misleading-indentation', '-Werror', '-Iinclude', 'tests/navigation_inventory_test.cpp', '-o', str(work/'navigation-inventory'))

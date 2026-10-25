@@ -64,7 +64,7 @@ public:
         for(auto&d:frame(m))if(d.text)text(d);else{SDL_SetRenderDrawColor(renderer,(d.color>>16)&255,(d.color>>8)&255,d.color&255,255);SDL_Rect r{d.x,d.y,d.w,d.h};SDL_RenderFillRect(renderer,&r);}SDL_RenderPresent(renderer);
     }
 };
-enum class Task { Resume,Profiles,Games,Backups,Backup,All,Restore,Connect,Flush };
+enum class Task { Resume,Profiles,Games,Backups,Backup,All,Restore,Connect,Flush,Organize };
 struct ResultData { std::vector<Profile>profiles;std::vector<Game>games;std::vector<Backup>backups;std::string message,error;int pending{},local{};bool connected{}; };
 class App
 {
@@ -78,7 +78,7 @@ class App
     }
     void flush(const Context&ctx)
     {
-        if(!cloud.connected())return;try{int sent=cloud.flush(ctx);if(sent)result.message=std::to_string(sent)+" backups confirmados no Google Drive. Cópias locais preservadas.";}catch(const std::exception&e){ctx.check();log(e.what());result.message="Sua cópia local está salva. O envio ficou pendente.";}
+        if(!cloud.connected())return;try{int sent=cloud.flush(ctx);if(sent)result.message=std::to_string(sent)+" backups confirmados no Google Drive. Últimas três cópias mantidas.";if(cloud.cleanupPending())result.message="Backups enviados. Organize o histórico em Ajustes para concluir a limpeza.";}catch(const std::exception&e){ctx.check();log(e.what());result.message="Sua cópia local está salva. O envio ficou pendente.";}
     }
     void start(Task kind)
     {
@@ -92,7 +92,8 @@ class App
             case Task::All:{int total=0;for(auto&p:nx::profiles(ctx))if(!p.all)for(auto&g:nx::games(p,ctx)){ctx.check();nx::backup(p,g,ctx,false,true);total++;}result.message=std::to_string(total)+" backups locais concluídos.";if(upload)flush(ctx);break;}
             case Task::Restore:{auto b=target.cloud?cloud.download(target,ctx):target;nx::restore(profile,game,b,ctx);result.message="Save restaurado. A cópia de segurança foi preservada.";result.backups=localBackups(profile,game);break;}
             case Task::Connect:cloud.connect(ctx);result.message="Google Drive conectado.";flush(ctx);break;
-            case Task::Flush:{int sent=cloud.flush(ctx);result.message=sent?std::to_string(sent)+" backups confirmados no Google Drive.":"Nenhum envio pendente. Crie um backup em Meus jogos com X.";break;}}
+            case Task::Organize:{if(ctx.report)ctx.report({"Organizando as três cópias locais mais recentes...",{},{},0.2,true});int local=organizeLocal(ctx),remote=cloud.connected()?cloud.organize(ctx):0;result.message="Histórico organizado. Locais removidos: "+std::to_string(local)+"; nuvem: "+std::to_string(remote)+".";if(!cloud.connected())result.message="Histórico local organizado. Conecte o Google para organizar a nuvem.";break;}
+            case Task::Flush:{int sent=cloud.flush(ctx);result.message=sent?std::to_string(sent)+" backups confirmados no Google Drive.":"Nenhum envio pendente. Crie um backup em Meus jogos com X.";if(cloud.cleanupPending())result.message="Backups enviados. Limpeza pendente em Ajustes > Histórico.";break;}}
         }catch(const std::exception&e){if(kind!=Task::Resume)result.error=e.what();log(e.what());}result.connected=cloud.connected();try{result.pending=pendingCount();result.local=backupCount();}catch(const std::exception&e){log(e.what());}};
         if(R_FAILED(threadCreate(&thread,threadEntry,this,nullptr,0x100000,0x2c,1)))throw std::runtime_error("Não foi possível iniciar a tarefa.");
         if(R_FAILED(threadStart(&thread))){threadClose(&thread);throw std::runtime_error("Não foi possível executar a tarefa.");}busy=true;
@@ -101,11 +102,11 @@ class App
     {
         if(!busy)return;{std::lock_guard g(progressLock);m.message=current.text;m.progress=current.value;m.canCancel=current.canCancel;m.authCode=current.code;m.authUrl=current.url;}
         if(!done.load(std::memory_order_acquire))return;threadWaitForExit(&thread);threadClose(&thread);busy=false;m.authCode.clear();m.authUrl.clear();m.connected=result.connected;m.pending=result.pending;m.localCount=result.local;
-        if(!result.error.empty()){m.message=result.error;messageReturn=(task==Task::Connect||task==Task::Flush)?Screen::Cloud:Screen::Home;show(m,Screen::Message);return;}
+        if(!result.error.empty()){m.message=result.error;messageReturn=(task==Task::Connect||task==Task::Flush)?Screen::Cloud:task==Task::Organize?Screen::Settings:Screen::Home;show(m,Screen::Message);return;}
         m.message=result.message;
         switch(task){case Task::Resume:show(m,Screen::Home);break;case Task::Profiles:m.profiles=std::move(result.profiles);show(m,Screen::Profiles);break;case Task::Games:m.games=std::move(result.games);show(m,Screen::Games);break;
             case Task::Backups:case Task::Backup:case Task::Restore:m.backups=std::move(result.backups);show(m,Screen::Backups);break;
-            case Task::Connect:case Task::Flush:show(m,Screen::Cloud);break;case Task::All:messageReturn=Screen::Home;show(m,Screen::Message);break;}
+            case Task::Connect:case Task::Flush:show(m,Screen::Cloud);break;case Task::All:messageReturn=Screen::Home;show(m,Screen::Message);break;case Task::Organize:messageReturn=Screen::Settings;show(m,Screen::Message);break;}
     }
     void accept()
     {
@@ -114,7 +115,7 @@ class App
         case Screen::Games:if(!m.games.empty()){m.game=m.games.at(m.selected);start(Task::Backups);}break;
         case Screen::Backups:if(!m.backups.empty()){m.target=m.backups.at(m.selected);show(m,Screen::Confirm);}break;
         case Screen::Cloud:start(m.selected?Task::Flush:Task::Connect);break;
-        case Screen::Settings:if(m.selected==0){m.autoUpload=!m.autoUpload;auto j=object();put(j.get(),"auto_upload",int64_t(m.autoUpload));writeText(std::string(ROOT)+"/config/settings-v2.json",encode(j.get()));}else{m.message=std::string("SaveNX ")+VERSION+" · Aplicativo original para proteger seus saves.";messageReturn=Screen::Settings;show(m,Screen::Message);}break;
+        case Screen::Settings:if(m.selected==0){m.autoUpload=!m.autoUpload;auto j=object();put(j.get(),"auto_upload",int64_t(m.autoUpload));writeText(std::string(ROOT)+"/config/settings-v2.json",encode(j.get()));}else if(m.selected==1)start(Task::Organize);else{m.message=std::string("SaveNX ")+VERSION+" · Aplicativo original para proteger seus saves.";messageReturn=Screen::Settings;show(m,Screen::Message);}break;
         case Screen::Confirm:if(m.selected==0)show(m,Screen::Backups);break;
         case Screen::Message:show(m,messageReturn);break;default:break;}
     }

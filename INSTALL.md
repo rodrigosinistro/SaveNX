@@ -1,13 +1,15 @@
-SaveNX 0.4.2 — instalação
+SaveNX 0.4.3 — instalação
 
 1. Feche o jogo e desligue o Switch antes de remover o cartão SD.
 2. Extraia este ZIP. Copie a pasta switch para a raiz do SD, aceitando substituir somente o SaveNX.nro.
 3. Mantenha suas pastas de backups e configurações anteriores. Não é necessário apagá-las.
 4. Inicie o Homebrew Menu com memória completa (title override, mantendo R ao abrir um jogo) e abra SaveNX.
 
-A versão 0.4.2 corrige os caminhos usados para abrir arquivos e pastas dos saves. Mantém os quadros grandes, a navegação com ambos os manches e a busca de saves da 0.4.1. Os backups desta versão ficam em /switch/SaveNX/backups-v2. Os backups antigos permanecem preservados, mas não são restaurados automaticamente pela nova versão.
+A versão 0.4.3 mantém automaticamente as três cópias mais recentes por jogo, perfil e espaço de save, no cartão e no Google Drive. Mantém a leitura e o envio validados na 0.4.2.
 
 Os números de saves por perfil são dados encontrados no console. Um backup é uma cópia ZIP concluída no cartão, que depois pode ser enviada ao Drive.
+
+Para organizar cópias já existentes, abra Ajustes → Histórico de backups e pressione A. Os novos backups aplicam o limite automaticamente após sua conclusão. No Drive, as cópias antigas vão para a lixeira; no cartão, os ZIPs antigos do SaveNX são removidos. A fila de envio acompanha as três versões locais mantidas.
 
 Primeiro backup:
 - Meus jogos → escolha seu perfil → escolha o jogo.

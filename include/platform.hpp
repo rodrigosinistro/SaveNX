@@ -1,5 +1,6 @@
 #pragma once
 #include "core.hpp"
+#include <set>
 #include <atomic>
 #include <functional>
 #include <stdexcept>
@@ -13,6 +14,8 @@ void prepare(); void log(const std::string&); void writeText(const std::string&,
 std::string readText(const std::string&); std::string timestamp();
 std::vector<Profile> profiles(const Context& = {});std::vector<Game> games(const Profile&,const Context&);
 std::vector<Backup> localBackups(const Profile&,const Game&);int pendingCount();int backupCount();
+int pruneLocal(const Profile&,const Game&,const Context&,const std::set<std::string>& protectedFiles = {});
+int organizeLocal(const Context&);
 std::string gameDirectory(const Profile&,const Game&);
 Backup backup(const Profile&,const Game&,const Context&,bool safety=false,bool enqueue=true);
 void restore(const Profile&,const Game&,const Backup&,const Context&);

@@ -23,7 +23,7 @@ build/%.o: source/%.cpp
 SaveNX.elf: $(OBJECTS)
 	$(CXX) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $@
 SaveNX.nacp: Makefile
-	$(TOOLS)/nacptool --create "SaveNX" "SaveNX contributors" "0.4.2" $@
+	$(TOOLS)/nacptool --create "SaveNX" "SaveNX contributors" "0.4.3" $@
 SaveNX.nro: SaveNX.elf SaveNX.nacp icon.jpg $(shell find romfs -type f)
 	$(TOOLS)/elf2nro SaveNX.elf $@ --icon=icon.jpg --nacp=SaveNX.nacp --romfsdir=romfs
 clean:

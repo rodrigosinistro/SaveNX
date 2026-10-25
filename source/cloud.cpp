@@ -1,5 +1,6 @@
 #include "cloud.hpp"
 #include "json_util.hpp"
+#include "retention.hpp"
 #include <curl/curl.h>
 #include <filesystem>
 #include <thread>
@@ -26,10 +27,10 @@ Response request(const std::string&method,const std::string&url,const std::vecto
     for(auto&s:headers)list=curl_slist_append(list,s.c_str());
     curl_easy_setopt(c,CURLOPT_URL,url.c_str());curl_easy_setopt(c,CURLOPT_HTTPHEADER,list);curl_easy_setopt(c,CURLOPT_SSL_VERIFYPEER,1L);curl_easy_setopt(c,CURLOPT_SSL_VERIFYHOST,2L);
     curl_easy_setopt(c,CURLOPT_CAINFO,"romfs:/certs/cacert.pem");curl_easy_setopt(c,CURLOPT_CONNECTTIMEOUT,15L);curl_easy_setopt(c,CURLOPT_LOW_SPEED_LIMIT,1L);curl_easy_setopt(c,CURLOPT_LOW_SPEED_TIME,30L);
-    curl_easy_setopt(c,CURLOPT_TIMEOUT,(upload.empty()&&download.empty())?60L:0L);curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);curl_easy_setopt(c,CURLOPT_USERAGENT,"SaveNX/0.4.2");
+    curl_easy_setopt(c,CURLOPT_TIMEOUT,(upload.empty()&&download.empty())?60L:0L);curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);curl_easy_setopt(c,CURLOPT_USERAGENT,"SaveNX/0.4.3");
     curl_easy_setopt(c,CURLOPT_PROTOCOLS,long(CURLPROTO_HTTPS));curl_easy_setopt(c,CURLOPT_HEADERFUNCTION,header);curl_easy_setopt(c,CURLOPT_HEADERDATA,&r.headers);
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,receive);curl_easy_setopt(c,CURLOPT_WRITEDATA,&r.body);curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);curl_easy_setopt(c,CURLOPT_XFERINFOFUNCTION,progress);curl_easy_setopt(c,CURLOPT_XFERINFODATA,&ctx);
-    if(method=="POST"){curl_easy_setopt(c,CURLOPT_POST,1L);curl_easy_setopt(c,CURLOPT_POSTFIELDS,body.c_str());curl_easy_setopt(c,CURLOPT_POSTFIELDSIZE,body.size());}
+    if(method=="POST"||method=="PATCH"){if(method=="POST")curl_easy_setopt(c,CURLOPT_POST,1L);else curl_easy_setopt(c,CURLOPT_CUSTOMREQUEST,"PATCH");curl_easy_setopt(c,CURLOPT_POSTFIELDS,body.c_str());curl_easy_setopt(c,CURLOPT_POSTFIELDSIZE,body.size());}
     else if(method!="GET")curl_easy_setopt(c,CURLOPT_CUSTOMREQUEST,method.c_str());
     if(!upload.empty()){f=std::fopen(upload.c_str(),"rb");if(f){io.file=f;io.ctx=&ctx;curl_easy_setopt(c,CURLOPT_UPLOAD,1L);curl_easy_setopt(c,CURLOPT_READFUNCTION,readFile);curl_easy_setopt(c,CURLOPT_READDATA,&io);curl_easy_setopt(c,CURLOPT_INFILESIZE_LARGE,curl_off_t(std::filesystem::file_size(upload)));}}
     if(!download.empty()){f=std::fopen(download.c_str(),"wb");if(f){io.file=f;io.ctx=&ctx;curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,writeFile);curl_easy_setopt(c,CURLOPT_WRITEDATA,&io);}}
@@ -89,22 +90,59 @@ std::string Cloud::targetFolder(const std::string&user,const std::string&title,c
 }
 int Cloud::flush(const Context&ctx)
 {
-    if(!linked)throw std::runtime_error("Conecte sua conta Google primeiro.");int sent=0;
-    for(auto&job:pending()) {ctx.check();const auto parent=targetFolder(job.user,job.title,job.slot,ctx,true);bool completed=false;
+    if(!linked)throw std::runtime_error("Conecte sua conta Google primeiro.");int sent=0;retentionDeferred=false;
+    for(auto&job:pending()) {ctx.check();const auto parent=targetFolder(job.user,job.title,job.slot,ctx,true);bool completed=false;std::string confirmedId;
         for(int attempt=0;attempt<3&&!completed;attempt++)try{renew(ctx);std::vector<std::string> h={"Authorization: Bearer "+token,"Content-Type: application/json"};
             auto r=request("GET",query("trashed=false and '"+quote(parent)+"' in parents and appProperties has { key='saveNxBackup' and value='"+quote(job.id)+"' }","files(id,size)"),h,{},ctx);require(r);auto existing=parse(r.body);auto files=field(existing.get(),"files");
-            if(files&&json_object_array_length(files)){auto f=json_object_array_get_idx(files,0);completed=confirmedUpload(r.code,str(f,"id"),uint64_t(num(f,"size")),job.size);if(!completed)throw std::runtime_error("O arquivo encontrado na nuvem não corresponde ao backup.");}
+            if(files&&json_object_array_length(files)){auto f=json_object_array_get_idx(files,0);confirmedId=str(f,"id");completed=confirmedUpload(r.code,confirmedId,uint64_t(num(f,"size")),job.size);if(!completed)throw std::runtime_error("O arquivo encontrado na nuvem não corresponde ao backup.");}
             else{auto body=object();put(body.get(),"name",job.name);put(body.get(),"mimeType",std::string("application/zip"));auto parents=json_object_new_array();json_object_array_add(parents,json_object_new_string(parent.c_str()));json_object_object_add(body.get(),"parents",parents);auto prop=json_object_new_object();put(prop,"saveNxBackup",job.id);json_object_object_add(body.get(),"appProperties",prop);
                 h.push_back("X-Upload-Content-Type: application/zip");h.push_back("X-Upload-Content-Length: "+std::to_string(job.size));
                 r=request("POST","https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,size",h,encode(body.get()),ctx);require(r);auto url=r.headers["location"];
                 if(!url.starts_with("https://www.googleapis.com/upload/drive/"))throw std::runtime_error("O Google retornou uma sessão de envio inválida.");
                 if(ctx.report)ctx.report({"Enviando o backup ao Google Drive...",{},{},0.7,true});r=request("PUT",url,{"Authorization: Bearer "+token,"Content-Type: application/zip"},{},ctx,job.file);require(r);auto result=parse(r.body);
-                completed=confirmedUpload(r.code,str(result.get(),"id"),uint64_t(num(result.get(),"size")),job.size);}
+                confirmedId=str(result.get(),"id");completed=confirmedUpload(r.code,confirmedId,uint64_t(num(result.get(),"size")),job.size);}
             if(!completed)throw std::runtime_error("O Google não confirmou o backup completo.");
         }catch(const std::exception&e){ctx.check();if(attempt==2)throw;log(std::string("Upload retry: ")+e.what());std::this_thread::sleep_for(std::chrono::milliseconds(500*(1<<attempt)));}
-        if(completed){acknowledge(job);sent++;}}
+        if(completed){acknowledge(job);sent++;try{pruneFolder(parent,ctx,confirmedId);}catch(const std::exception&e){retentionDeferred=true;log(std::string("Cloud retention deferred: ")+e.what());}}}
     return sent;
 }
+std::vector<Cloud::Entry> Cloud::children(const std::string&parent,const std::string&mime,const Context&ctx)
+{
+    std::vector<Entry> entries;std::string next;std::set<std::string> seen;
+    do{
+        renew(ctx);auto url=query("trashed=false and '"+quote(parent)+"' in parents and mimeType='"+quote(mime)+"'","nextPageToken,incompleteSearch,files(id,name,size,appProperties)");
+        if(!next.empty())url+="&pageToken="+urlEncode(next);
+        auto r=request("GET",url,{"Authorization: Bearer "+token},{},ctx);require(r);auto j=parse(r.body);auto files=field(j.get(),"files");
+        if(!j||!files||json_object_get_type(files)!=json_type_array||num(j.get(),"incompleteSearch"))throw std::runtime_error("A listagem da nuvem não ficou completa. Nenhuma cópia será removida.");
+        for(size_t i=0;i<json_object_array_length(files);i++){
+            auto f=json_object_array_get_idx(files,i);auto id=str(f,"id");if(id.empty())throw std::runtime_error("O Google não confirmou a lista de cópias.");
+            entries.push_back({id,str(f,"name"),str(field(f,"appProperties"),"saveNxBackup"),uint64_t(num(f,"size"))});
+        }
+        next=str(j.get(),"nextPageToken");if(!next.empty()&&!seen.insert(next).second)throw std::runtime_error("A listagem da nuvem foi interrompida.");
+    }while(!next.empty());return entries;
+}
+int Cloud::pruneFolder(const std::string&parent,const Context&ctx,const std::string&protectedId)
+{
+    auto files=children(parent,"application/zip",ctx);std::vector<RetentionItem> managed;
+    for(auto&f:files){auto version=backupVersion(f.name);if(version&&*version==f.backupId&&f.size)managed.push_back({f.id,f.name});}
+    auto plan=retentionPlan(std::move(managed),protectedId.empty()?std::set<std::string>{}:std::set<std::string>{protectedId});int removed=0;
+    for(auto&old:plan.remove){
+        ctx.check();renew(ctx);auto body=object();json_object_object_add(body.get(),"trashed",json_object_new_boolean(true));
+        auto r=request("PATCH","https://www.googleapis.com/drive/v3/files/"+urlEncode(old.key)+"?fields=id,trashed",{"Authorization: Bearer "+token,"Content-Type: application/json"},encode(body.get()),ctx);require(r);auto j=parse(r.body);
+        if(r.code!=200||str(j.get(),"id")!=old.key||!num(j.get(),"trashed"))throw std::runtime_error("O Google não confirmou a organização do histórico.");
+        removed++;log("Cloud retention moved backup to trash id="+old.key);
+    }return removed;
+}
+int Cloud::organize(const Context&ctx)
+{
+    if(!linked)throw std::runtime_error("Conecte sua conta Google primeiro.");
+    auto root=folder("root","SaveNX",ctx,false);if(root.empty())return 0;auto base=folder(root,"Backups-v2",ctx,false);if(base.empty())return 0;
+    const std::string folders="application/vnd.google-apps.folder";int removed=0;
+    for(auto&u:children(base,folders,ctx))if(retentionUser(u.name))for(auto&t:children(u.id,folders,ctx))if(retentionTitle(t.name))for(auto&s:children(t.id,folders,ctx))if(retentionSlot(s.name)){
+        if(ctx.report)ctx.report({"Organizando as três cópias mais recentes na nuvem...",{},{},0.7,true});removed+=pruneFolder(s.id,ctx);
+    }retentionDeferred=false;return removed;
+}
+
 std::vector<Backup> Cloud::list(const Profile&,const Game&g,const Context&ctx)
 {
     std::vector<Backup> out;if(!linked)return out;auto parent=targetFolder(ownerKey(g),"TITLE_"+hex(g.title),slot(g),ctx,false);if(parent.empty())return out;std::string next;

@@ -10,7 +10,7 @@
 
 namespace nx
 {
-inline constexpr const char *VERSION = "0.4.2";
+inline constexpr const char *VERSION = "0.4.3";
 inline constexpr const char *ROOT = "sdmc:/switch/SaveNX";
 enum class Screen { Home, Profiles, Games, Backups, Cloud, Settings, Confirm, Working, Message };
 struct Profile { std::array<uint64_t,2> uid{}; std::string name,key; bool shared{},all{}; int saves{}; };
@@ -60,7 +60,7 @@ inline bool sameSlot(const Game& a,const Game& b) { return a.title==b.title&&a.u
 inline int count(const Model& m)
 {
     switch(m.screen) { case Screen::Home:return 4; case Screen::Profiles:return m.profiles.size(); case Screen::Games:return m.games.size();
-        case Screen::Backups:return m.backups.size();case Screen::Cloud:return 2;case Screen::Settings:return 2;case Screen::Confirm:return 2;default:return 0; }
+        case Screen::Backups:return m.backups.size();case Screen::Cloud:return 2;case Screen::Settings:return 3;case Screen::Confirm:return 2;default:return 0; }
 }
 inline void move(Model& m,int delta) { int n=count(m); m.selected=n?(m.selected+delta+n)%n:0; }
 inline void show(Model& m,Screen s) { m.screen=s;m.selected=0; }
@@ -134,12 +134,13 @@ inline std::vector<Draw> frame(const Model& m)
     }
     else if(m.screen==Screen::Settings)
     {
-        text(50,177,1180,21,"As cópias locais e a proteção antes de restaurar ficam sempre ativas.",muted);
-        for(int i=0;i<2;i++){
-            int x=48+i*604;box(x,258,580,188,i==m.selected?chosen:panel);if(i==m.selected)box(x,258,5,188,teal);
-            text(x+28,286,524,28,i?"Sobre o SaveNX":"Envio automático");
-            text(x+28,345,524,24,i?std::string("Versão ")+VERSION:m.autoUpload?"Ativado":"Desativado",teal);
-            text(x+28,395,524,18,i?"Aplicativo original para seus saves.":"Enviar à nuvem após cada novo backup.",muted);
+        text(50,177,1180,21,"Limite automático: três backups por jogo, perfil e espaço, no cartão e na nuvem.",muted);
+        const std::string titles[]={"Envio automático","Histórico de backups","Sobre o SaveNX"};
+        const std::string values[]={m.autoUpload?"Ativado":"Desativado","Manter as três últimas cópias",std::string("Versão ")+VERSION};
+        const char* descriptions[]={"Enviar à nuvem após cada novo backup.","Organizar também as cópias anteriores.","Aplicativo original para seus saves."};
+        for(int i=0;i<3;i++){
+            int x=48+(i%2)*604,y=228+(i/2)*180;box(x,y,580,156,i==m.selected?chosen:panel);if(i==m.selected)box(x,y,5,156,teal);
+            text(x+28,y+21,524,27,titles[i]);text(x+28,y+68,524,21,values[i],teal);text(x+28,y+115,524,18,descriptions[i],muted);
         }
     }
     else if(m.screen==Screen::Confirm)
@@ -154,7 +155,7 @@ inline std::vector<Draw> frame(const Model& m)
         box(48,224,1184,330,panel);text(80,270,1120,25,m.message);
         if(m.screen==Screen::Working){
             box(80,351,1120,12,0x293950);box(80,351,int(1120*std::clamp(m.progress,0.0,1.0)),12,teal);
-            text(80,411,1120,21,m.canCancel?"B para cancelar. Suas cópias locais serão preservadas.":"Finalizando a gravação. Aguarde nesta tela.",muted);
+            text(80,411,1120,21,m.canCancel?"B para interromper as próximas etapas.":"Finalizando a gravação. Aguarde nesta tela.",muted);
         }else text(80,424,1120,22,"Pressione A ou B para voltar.",teal);
     }
     box(48,652,1184,1,0x293950);

@@ -2,6 +2,7 @@
 #include "json_util.hpp"
 #include "archive.hpp"
 #include "save_fs.hpp"
+#include "retention.hpp"
 #include <switch.h>
 #include <minizip/zip.h>
 #include <minizip/unzip.h>
@@ -88,6 +89,7 @@ Backup backup(const Profile&p,const Game&g,const Context&ctx,bool safety,bool en
     }catch(...){if(z)zipClose(z,nullptr);std::error_code ec;fs::remove(temp,ec);throw;}
     const uint64_t size=fs::file_size(file);
     if(enqueue){auto job=object();put(job.get(),"id",id);put(job.get(),"file",file);put(job.get(),"name",name);put(job.get(),"user",ownerKey(g));put(job.get(),"title","TITLE_"+hex(g.title));put(job.get(),"slot",slot(g));put(job.get(),"size",int64_t(size));writeText(path("/queue-v2/")+id+".json",encode(job.get()));}
+    if(!safety)try{pruneLocal(p,g,ctx,{file});}catch(const std::exception&e){log(std::string("Local retention deferred: ")+e.what());}
     log("Backup verified bytes="+std::to_string(size)+" file="+file);return {name,file,{},size,false};
 }
 // Close every writable file before committing the save filesystem.
@@ -148,13 +150,39 @@ void restore(const Profile&p,const Game&g,const Backup&b,const Context&ctx)
     if(m.data>extra.data_size||m.journal>extra.journal_size)sdk(fsExtendSaveDataFileSystem(static_cast<FsSaveDataSpaceId>(g.space),g.saveId,std::max<int64_t>(m.data,extra.data_size),std::max<int64_t>(m.journal,extra.journal_size)),"ajustar o espaço do save");
     if(ctx.report)ctx.report({"Restaurando o save...",{},{},0.55,false});
     try{apply(g,b.path,std::max<int64_t>(m.journal,extra.journal_size),ctx);}catch(...){log("Restore failed; restoring safety copy "+safe.path);try{apply(g,safe.path,extra.journal_size,ctx);}catch(...){throw std::runtime_error("A restauração falhou. A cópia de segurança está no SD.");}throw std::runtime_error("A restauração falhou; o save anterior foi recuperado.");}
+    try{pruneLocal(p,g,ctx,{safe.path});}catch(const std::exception&e){log(std::string("Retention after restore deferred: ")+e.what());}
 }
 std::vector<Backup> localBackups(const Profile&p,const Game&g)
 {
     std::vector<Backup> out;std::error_code ec;fs::directory_iterator i(gameDirectory(p,g),ec),end;if(ec)return out;
     for(;i!=end;i.increment(ec)){if(ec)break;if(i->is_regular_file()&&i->path().extension()==".zip")out.push_back({i->path().filename().string(),i->path().string(),{},i->file_size(),false});}
-    std::sort(out.begin(),out.end(),[](auto&a,auto&b){return a.name>b.name;});return out;
+    std::sort(out.begin(),out.end(),[](auto&a,auto&b){return backupNewer({a.path,a.name},{b.path,b.name});});return out;
 }
+static int pruneDirectory(const std::string&dir,const Context&ctx,const std::set<std::string>&protectedFiles)
+{
+    std::vector<RetentionItem> items;std::error_code ec;fs::directory_iterator i(dir,ec),end;if(ec){if(!fs::exists(dir))return 0;throw std::runtime_error("Não foi possível consultar as cópias locais.");}
+    for(;i!=end;++i)if(!i->is_symlink()&&i->is_regular_file()&&i->file_size()>0&&backupVersion(i->path().filename().string()))items.push_back({i->path().string(),i->path().filename().string()});
+    auto plan=retentionPlan(std::move(items),protectedFiles);auto jobs=pending();int removed=0;
+    for(auto&old:plan.remove){ctx.check();if(!fs::remove(old.key))continue;removed++;log("Local retention removed "+old.key);
+        for(auto&job:jobs)if(job.file==old.key)acknowledge(job);
+    }return removed;
+}
+int pruneLocal(const Profile&p,const Game&g,const Context&ctx,const std::set<std::string>&protectedFiles)
+{
+    return pruneDirectory(gameDirectory(p,g),ctx,protectedFiles);
+}
+int organizeLocal(const Context&ctx)
+{
+    int removed=0;auto root=path("/backups-v2");
+    for(auto&u:fs::directory_iterator(root)){
+        ctx.check();if(u.is_symlink()||!u.is_directory()||!retentionUser(u.path().filename().string()))continue;
+        for(auto&t:fs::directory_iterator(u.path())){
+            if(t.is_symlink()||!t.is_directory()||!retentionTitle(t.path().filename().string()))continue;
+            for(auto&s:fs::directory_iterator(t.path()))if(!s.is_symlink()&&s.is_directory()&&retentionSlot(s.path().filename().string()))removed+=pruneDirectory(s.path().string(),ctx,{});
+        }
+    }return removed;
+}
+
 std::vector<Job> pending()
 {
     std::vector<Job> out;std::error_code ec;fs::directory_iterator i(path("/queue-v2"),ec),end;if(ec)return out;

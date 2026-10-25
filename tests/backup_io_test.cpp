@@ -58,5 +58,17 @@ int main(int argc,char**argv)
     assert(nx::backupCount()==2&&nx::pendingCount()==1&&mounts==0&&writers==0&&commits>0&&pathCalls>15);
     for(auto&e:fs::recursive_directory_iterator(fs::path(nx::ROOT)/"backups-v2"))assert(e.path().extension()!=".partial");
     auto copies=nx::localBackups(p,g);bool safety=false;for(auto&copy:copies)if(copy.name.starts_with("Segurança_")){safety=true;assert(zipped(copy.path,"save/progress.bin")=="NEW CURRENT SAVE");}assert(safety);
+    // Retention must cap the offline queue too, while preserving another profile/slot.
+    auto other=g;other.uid={3,4};auto otherCopy=nx::backup(p,other,ctx);
+    std::vector<nx::Backup> recent;for(int n=0;n<4;n++){write(gameRoot/"progress.bin","VERSION_"+std::to_string(n));recent.push_back(nx::backup(p,g,ctx));}
+    assert(!fs::exists(recent[0].path)&&fs::exists(otherCopy.path));assert(nx::localBackups(p,g).size()==3);
+    assert(nx::pendingCount()==4); // Three for this game/profile, one for the other.
+    auto selected=recent[1];write(gameRoot/"progress.bin","BEFORE_RESTORE");nx::restore(p,g,selected,ctx);
+    assert(read(gameRoot/"progress.bin")=="VERSION_1");assert(nx::localBackups(p,g).size()==3);assert(fs::exists(otherCopy.path));
+    bool protectedSafety=false;for(auto&copy:nx::localBackups(p,g))if(copy.name.starts_with("Segurança_")){protectedSafety=true;assert(zipped(copy.path,"save/progress.bin")=="BEFORE_RESTORE");}assert(protectedSafety);
+    // Existing history is organized explicitly; non-managed ZIP names are left alone.
+    auto history=g;history.index=1;for(int n=0;n<5;n++)nx::backup(p,history,ctx,true,false);
+    auto historyDir=nx::gameDirectory(p,history);fs::copy_file(otherCopy.path,fs::path(historyDir)/"manual.zip",fs::copy_options::overwrite_existing);
+    assert(nx::localBackups(p,history).size()==6);nx::organizeLocal(ctx);assert(nx::localBackups(p,history).size()==4);assert(fs::exists(fs::path(historyDir)/"manual.zip"));
     std::cout<<"Save I/O: full SDK path buffers, nested Unicode/binary/empty files, ZIP contents, persistent queue, failed-copy cleanup, restore and safety copy passed.\n";
 }

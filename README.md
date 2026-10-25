@@ -1,4 +1,4 @@
-# SaveNX 0.4.2
+# SaveNX 0.4.3
 
 Aplicativo homebrew original para backup e restauração de saves do Nintendo Switch, com cópias no cartão SD e no Google Drive pessoal.
 
@@ -35,7 +35,9 @@ O usuário escolhe **Google Drive → Conectar Google Drive**, abre o endereço 
 
 O cadastro OAuth pertence ao aplicativo e precisa estar incluído no pacote pelo mantenedor. Para compilação própria, use um cliente Google do tipo **TVs and Limited Input devices**, com Drive API e escopo `drive.file`. O workflow pode recebê-lo pelos secrets `SAVENX_GOOGLE_CLIENT_ID` e `SAVENX_GOOGLE_CLIENT_SECRET`. Sem essa configuração, as operações locais funcionam e a conexão informa que o pacote ainda não está preparado. Nenhum cadastro pessoal é publicado neste repositório.
 
-Os backups usam `SaveNX/Backups-v2/PERFIL/TITLE_ID/ESPAÇO` na conta Drive autorizada. Todo backup manual concluído entra na fila de envio, mesmo com o envio automático desativado. O ajuste automático controla apenas o envio imediato; “Enviar pendentes” continua disponível para envio manual. A tela de nuvem mostra cópias locais concluídas e envios pendentes. A contagem de saves por perfil informa os dados detectados no console; o backup só passa a existir após concluir e validar o ZIP. A fila no SD só é removida depois da confirmação de ID e tamanho do arquivo remoto. A cópia local permanece.
+Os backups usam `SaveNX/Backups-v2/PERFIL/TITLE_ID/ESPAÇO` na conta Drive autorizada. Todo backup manual concluído entra na fila de envio, mesmo com o envio automático desativado. O ajuste automático controla apenas o envio imediato; “Enviar pendentes” continua disponível para envio manual. A tela de nuvem mostra cópias locais concluídas e envios pendentes. A contagem de saves por perfil informa os dados detectados no console; o backup só passa a existir após concluir e validar o ZIP. A confirmação de envio remove a pendência da fila. A retenção automática mantém as três versões mais recentes de cada jogo, perfil e espaço de save, tanto no cartão quanto na nuvem. A limpeza local ocorre após verificar uma nova cópia; a da nuvem ocorre após confirmar um upload completo. Pendências locais que saem das três versões são descartadas junto com a cópia substituída.
+
+Em **Ajustes → Histórico de backups**, organize também as versões já existentes. No Google Drive, cópias antigas são enviadas à lixeira; apenas arquivos identificados como criados pelo SaveNX, dentro de suas pastas de perfil/jogo/espaço, são organizados. A cópia de segurança anterior à restauração participa do limite local, mas a limpeza fica suspensa até a gravação terminar, preservando o backup selecionado durante toda a operação. Falhas de rede/listagem conservam as cópias e registram limpeza pendente. Arquivos de outros aplicativos permanecem fora dessa política.
 
 ## Dados e compatibilidade
 

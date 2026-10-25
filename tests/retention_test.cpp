@@ -9,7 +9,7 @@ int main()
     files.push_back({"other","manual.zip"});files.push_back({"partial",name(25)+".partial"});
     auto plan=retentionPlan(files);assert(plan.keep.size()==3&&plan.remove.size()==2);assert(plan.keep[0].key=="24"&&plan.keep[2].key=="22");
     plan=retentionPlan(files,{"20"});assert(plan.keep.size()==3&&plan.remove.size()==2);for(auto&i:plan.remove)assert(i.key!="20");
-    assert(backupVersion("Segurança_"+name(24))==backupVersion(name(24)));
+    assert(backupVersion("Segurança_"+name(24))==backupVersion(name(24)));assert(!backupVersion(name(24,"001")));
     auto sameSecond=retentionPlan({{"a",name(24,"9")},{"b",name(24,"10")},{"c",name(24,"100")},{"d",name(24,"99")}});assert(sameSecond.remove[0].key=="a");
     auto duplicate=retentionPlan({{"copy1",name(24)},{"copy2",name(24)},{"copy3",name(23)},{"copy4",name(22)},{"copy5",name(21)}});assert(duplicate.keep.size()==3&&duplicate.remove.size()==2);
     for(auto&i:duplicate.keep)assert(i.name!=name(21));

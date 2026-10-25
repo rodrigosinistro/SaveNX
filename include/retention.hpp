@@ -12,7 +12,7 @@ inline std::optional<std::string> backupVersion(std::string_view name)
     constexpr std::string_view safety="Segurança_";
     if(name.starts_with(safety))name.remove_prefix(safety.size());
     if(!name.ends_with(".zip"))return {};name.remove_suffix(4);
-    if(name.size()<21||name.size()>60)return {};
+    if(name.size()<21||name.size()>60||(name.size()>21&&name[20]=='0'))return {};
     for(size_t i=0;i<name.size();i++){
         char expected=i==4||i==7||i==13||i==16?'-':i==10||i==19?'_':0;
         if(expected?name[i]!=expected:(name[i]<'0'||name[i]>'9'))return {};
